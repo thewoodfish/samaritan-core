@@ -1,3 +1,3 @@
-# samaritan-core
+## samaritan kernel
 
 The main controller for SamaritanOS
