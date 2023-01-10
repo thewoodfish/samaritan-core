@@ -1,8 +1,19 @@
 [package]
-name = "kernel"
+name = "samaritan_kernel"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+actix = "*"
+actix-files = "*"
+actix-rt = "*"
+actix-web = "*"
+actix-web-actors = "*"
+serde = { version = "1.0", features = ["derive"] }
+env_logger = "0.8"
+log = "0.4"
+derive_more = "0.99.17"
+rand = "0.8.5"
+subxt = "0.25.0"
