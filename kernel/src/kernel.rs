@@ -27,7 +27,7 @@ pub struct Kernel {
     pub hb: Instant,
 
     /// address of chain client actor
-    pub ccl_addr: Addr<chain::ChainClient>
+    pub ccl_addr: Addr<chain::ChainClient>,
 }
 
 impl Kernel {
@@ -63,7 +63,6 @@ impl Actor for Kernel {
         self.hb(ctx);
     }
 
-
     fn stopping(&mut self, _: &mut Self::Context) -> Running {
         Running::Stop
     }
@@ -98,12 +97,13 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                 let v: Vec<&str> = m.splitn(2, '#').collect();
 
                 match v[0] {
-                    "~1" => {   
+                    "~1" => {
                         self.ccl_addr.do_send(Note(101, v[1].to_owned()));
-                        
-                    },
+                    }
                     _ => {}
                 }
+
+                println!("{}", v[1]);
             }
             ws::Message::Binary(_) => println!("Unexpected binary"),
             ws::Message::Close(reason) => {

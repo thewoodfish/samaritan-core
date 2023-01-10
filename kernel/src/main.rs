@@ -13,8 +13,8 @@ use actix_web::{
 };
 use actix_web_actors::ws;
 
-mod kernel;
 mod chain;
+mod kernel;
 
 /// Entry point for our websocket route
 async fn chat_route(
@@ -26,7 +26,7 @@ async fn chat_route(
         kernel::Kernel {
             ipfs_url: String::new(),
             hb: Instant::now(),
-            ccl_addr: ccl.get_ref().clone()
+            ccl_addr: ccl.get_ref().clone(),
         },
         &req,
         stream,
@@ -45,7 +45,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(client.clone()))
-            .route("/ws", web::get().to(chat_route))
+            .route("/", web::get().to(chat_route))
             .wrap(Logger::default())
     })
     .workers(2)
