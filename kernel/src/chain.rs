@@ -25,7 +25,7 @@ impl Handler<Note> for ChainClient {
     fn handle(&mut self, msg: Note, ctx: &mut Context<Self>) -> Self::Result {
         match msg.0 {
             101 => {
-
+                self.
             },
             _ => {}
         }
