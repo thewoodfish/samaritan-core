@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 use actix::prelude::*;
 use actix_web_actors::ws;
+use std::str;
 
 use crate::chain;
 
@@ -12,10 +13,23 @@ const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 // message to be passed between actors
-pub struct Note(pub u32, pub String);
+pub struct Note(pub u32, pub Parcel);
+
+/// parcel containing data
+pub enum Parcel {
+    Empty,
+    String(String),
+    Tuple1(String, String)
+}
+
+/// types returned from actor messages
+pub enum ReturnData {
+    Nothing,
+    String(String)
+}
 
 impl Message for Note {
-    type Result = Result<bool, std::io::Error>;
+    type Result = Result<ReturnData, std::io::Error>;
 }
 
 #[derive(Debug)]
@@ -50,6 +64,13 @@ impl Kernel {
 
             ctx.ping(b"");
         });
+    }
+
+    /// generate the Samaritan DID
+    pub fn generate_user_did(hash: &[u8]) -> String {
+        let hash = hash.to_owned();
+
+        String::from("did:sam:root:") + str::from_utf8(&hash[..]).unwrap()
     }
 }
 
@@ -98,7 +119,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
 
                 match v[0] {
                     "~1" => {
-                        self.ccl_addr.do_send(Note(101, v[1].to_owned()));
+                        self.ccl_addr.do_send(Note(101, Parcel::String(v[1].to_owned())));
                     }
                     _ => {}
                 }

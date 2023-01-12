@@ -15,6 +15,8 @@ use actix_web_actors::ws;
 
 mod chain;
 mod kernel;
+mod network;
+mod utility;
 
 /// Entry point for our websocket route
 async fn chat_route(
@@ -32,19 +34,23 @@ async fn chat_route(
         stream,
     )
 }
-
+ 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));
 
     log::info!("starting HTTP server at http://localhost:1509");
 
+    // start the network actor
+    let netwrk = network::Network::new("dfjk".to_string()).start();
+
     // start chain client actor
-    let client = chain::ChainClient::new().start();
+    let client = chain::ChainClient::new(netwrk.clone()).start();
 
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(client.clone()))
+            .app_data(web::Data::new(netwrk.clone()))
             .route("/", web::get().to(chat_route))
             .wrap(Logger::default())
     })

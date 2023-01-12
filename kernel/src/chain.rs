@@ -1,71 +1,69 @@
-use crate::kernel;
+use crate::kernel::{self, ReturnData};
+use crate::kernel::{
+    Parcel, Note
+};
+use crate::{network::*, utility};
+
 use actix::prelude::*;
 
-use sp_keyring::AccountKeyring;
-use subxt::{tx::PairSigner, OnlineClient, PolkadotConfig};
-
-use random_word::*;
-use sp_keyring::sr25519::sr25519::*;
-
-// #[subxt::subxt(runtime_metadata_path = "../artifacts/polkadot_metadata.scale")]
-// pub mod polkadot {}
-
-// #[tokio::main]
-// async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//     tracing_subscriber::fmt::init();
-
-//     let signer = PairSigner::new(AccountKeyring::Alice.pair());
-//     let dest = AccountKeyring::Bob.to_account_id().into();
-
-//     // Create a client to use:
-//     let api = OnlineClient::<PolkadotConfig>::new().await?;
-
-//     // Create a transaction to submit:
-//     let tx = polkadot::tx()
-//         .balances()
-//         .transfer(dest, 123_456_789_012_345);
-
-//     // Submit the transaction with default params:
-//     let hash = api.tx().sign_and_submit_default(&tx, &signer).await?;
-
-//     println!("Balance transfer extrinsic submitted: {}", hash);
-
-//     Ok(())
-// }
+// use sp_keyring::AccountKeyring;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+use subxt::{
+    config::SubstrateConfig,
+    ext::sp_core::{crypto::Pair, ed25519::Pair as ed25519Pair},
+    storage::StorageKey,
+    tx::PairSigner,
+    OnlineClient, PolkadotConfig,
+};
 
 #[derive(Debug)]
-pub struct ChainClient {}
-
-type Note = kernel::Note;
+pub struct ChainClient {
+    network_addr: Addr<Network>
+}
 
 impl ChainClient {
-    pub fn new() -> ChainClient {
-        ChainClient {}
+    pub fn new(network_addr: Addr<Network>) -> ChainClient {
+        ChainClient {
+            network_addr
+        }
     }
 
-    pub fn get_id_and_keys(str: &str) {
-        // generate random words
-        let mut mnemonic = String::with_capacity(90);
-        let mut i = 0;
-
-        while i < 12 {
-            let word = random_word::gen();
-            if i != 0 {
-                mnemonic.push(' ');
-            }
-            mnemonic.push_str(word);
-            i += 1;
-        }
-
-        // extract password from JSON string
-        let password = str
-            .splitn(2, "password\":")
-            .filter(|s| !(*s).contains("serviceEndpoint"))
-            .collect::<String>()
-            .trim_matches('"');
-
+    pub async fn get_id_and_keys(&self, str: &str) -> Result<(), subxt::Error> {
         // we have our 12 words now
-        // let full_pair = Pair::from_entropy(mnemonic, )
+        let key_box = Pair::generate_with_phrase(None);
+        let pair: ed25519Pair = key_box.0;
+
+        // get did
+        let did = kernel::Kernel::generate_user_did(&pair.public().0[..]);
+        let did_doc_sk = StorageKey(str.into());
+        let mut hasher = DefaultHasher::new();
+        did_doc_sk.hash(&mut hasher);
+
+        // hash the did document
+        let root_doc_hash = hasher.finish();
+
+        // upload to IPFS, but run it on another thread to minimize delay
+        let ipfs_data = Network::upload_to_ipfs(str.to_owned()).await;
+        let cid = match ipfs_data.unwrap() {
+            ReturnData::String(str) => str,
+            _ => { String::new() }
+        };
+
+        // save to local file and upload to ipfs in background
+        utility::update_hash_table(did, cid);
+
+        // send message to network actor to upload to IPFS
+        self.network_addr.do_send(Note(101, Parcel::Empty));
+
+
+        // let signer = PairSigner::<SubstrateConfig, ed25519Pair>::new(pair);
+
+        // // Create a client to use:
+        // let api = OnlineClient::<PolkadotConfig>::new().await?;
+
+        //
+        Ok(())
     }
 }
 
@@ -74,16 +72,24 @@ impl Actor for ChainClient {
 }
 
 impl Handler<Note> for ChainClient {
-    type Result = Result<bool, std::io::Error>;
+    type Result = Result<ReturnData, std::io::Error>;
 
     /// handle incoming "Note" and dispatch to various appropriate methods
     fn handle(&mut self, msg: Note, ctx: &mut Context<Self>) -> Self::Result {
         match &msg.0 {
             101 => {
-                ChainClient::get_id_and_keys(&msg.1);
+                async {
+                    match msg.1 {
+                        Parcel::String(str) => {
+                            let _ = self.get_id_and_keys(&str).await;
+                        }
+                        _ => {}
+                    }
+                };
             }
             _ => {}
         }
-        Ok(true)
+
+        Ok(ReturnData::Nothing)
     }
 }
