@@ -1,21 +1,30 @@
-use crate::kernel::{self, ReturnData};
+use crate::kernel::{ReturnData};
 use crate::kernel::{
     Parcel, Note
 };
 use crate::{network::*, utility};
 
 use actix::prelude::*;
+use futures_lite::future;
 
-// use sp_keyring::AccountKeyring;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+// use sp_keyring::AccountKeyring
 use subxt::{
-    config::SubstrateConfig,
     ext::sp_core::{crypto::Pair, ed25519::Pair as ed25519Pair},
-    storage::StorageKey,
-    tx::PairSigner,
-    OnlineClient, PolkadotConfig,
+    tx::{
+        Era,
+        PairSigner,
+        PlainTip,
+        PolkadotExtrinsicParamsBuilder as Params,
+        PolkadotExtrinsicParams
+    },
+    OnlineClient,
+    config::{ SubstrateConfig, WithExtrinsicParams }
 };
+
+#[subxt::subxt(runtime_metadata_path = "metadata.scale")]
+pub mod samaritan_node { }
+
+type PolkadotConfig = WithExtrinsicParams<SubstrateConfig, PolkadotExtrinsicParams<SubstrateConfig>>;
 
 #[derive(Debug)]
 pub struct ChainClient {
@@ -29,41 +38,49 @@ impl ChainClient {
         }
     }
 
-    pub async fn get_id_and_keys(&self, str: &str) -> Result<(), subxt::Error> {
+    pub async fn get_did_and_keys(&self, str: &str) -> Result<Parcel, subxt::Error> {
         // we have our 12 words now
         let key_box = Pair::generate_with_phrase(None);
         let pair: ed25519Pair = key_box.0;
 
         // get did
-        let did = kernel::Kernel::generate_user_did(&pair.public().0[..]);
-        let did_doc_sk = StorageKey(str.into());
-        let mut hasher = DefaultHasher::new();
-        did_doc_sk.hash(&mut hasher);
-
-        // hash the did document
-        let root_doc_hash = hasher.finish();
+        let did = String::from("did:sam:root:") + &utility::get_did_suffix();
 
         // upload to IPFS, but run it on another thread to minimize delay
         let ipfs_data = Network::upload_to_ipfs(str.to_owned()).await;
-        let cid = match ipfs_data.unwrap() {
-            ReturnData::String(str) => str,
+
+        let cid = match ipfs_data.unwrap().0 {
+            Parcel::String(str) => str.clone(),
             _ => { String::new() }
         };
 
         // save to local file and upload to ipfs in background
-        utility::update_hash_table(did, cid);
+        utility::update_hash_table(did.clone(), cid.to_owned());
 
         // send message to network actor to upload to IPFS
         self.network_addr.do_send(Note(101, Parcel::Empty));
 
+        // send transaction onchain
+        let signer = PairSigner::<PolkadotConfig, ed25519Pair>::new(pair);
+        let api = OnlineClient::<PolkadotConfig>::new().await?;
 
-        // let signer = PairSigner::<SubstrateConfig, ed25519Pair>::new(pair);
+        // Create a transaction to submit:
+        let tx = samaritan_node::tx()
+            .kernel()
+            .record_data_entry("samaritan_root_document".as_bytes().to_vec(), Vec::from(cid.to_owned()));
 
-        // // Create a client to use:
-        // let api = OnlineClient::<PolkadotConfig>::new().await?;
+        // Configure the transaction tip and era:
+        let tx_params = Params::new()
+            .tip(PlainTip::new(20_000_000_000))
+            .era(Era::Immortal, api.genesis_hash());
 
-        //
-        Ok(())
+        // submit the transaction:
+        let hash = api.tx().sign_and_submit(&tx, &signer, tx_params).await?;
+        println!("Samaritans root document tx submitted: {}", hash);
+
+        // return did and keys
+        Ok(Parcel::Tuple1(did, key_box.1))
+
     }
 }
 
@@ -75,21 +92,21 @@ impl Handler<Note> for ChainClient {
     type Result = Result<ReturnData, std::io::Error>;
 
     /// handle incoming "Note" and dispatch to various appropriate methods
-    fn handle(&mut self, msg: Note, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, msg: Note, _: &mut Context<Self>) -> Self::Result {
         match &msg.0 {
             101 => {
-                async {
+                future::block_on(async {
                     match msg.1 {
                         Parcel::String(str) => {
-                            let _ = self.get_id_and_keys(&str).await;
+                            ReturnData((self.get_did_and_keys(&str).await).unwrap_or(Parcel::Empty))
                         }
-                        _ => {}
+                        _ => ReturnData(Parcel::Empty)
                     }
-                };
+                });
             }
             _ => {}
         }
 
-        Ok(ReturnData::Nothing)
+        Ok(ReturnData(Parcel::Empty))
     }
 }
