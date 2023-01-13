@@ -2,7 +2,9 @@ use std::time::{Duration, Instant};
 
 use actix::prelude::*;
 use actix_web_actors::ws;
+use futures_lite::future;
 use std::str;
+use serde_json::json;
 
 use crate::chain;
 
@@ -16,6 +18,7 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct Note(pub u32, pub Parcel);
 
 /// parcel containing data
+#[derive(Debug)]
 pub enum Parcel {
     Empty,
     String(String),
@@ -23,10 +26,8 @@ pub enum Parcel {
 }
 
 /// types returned from actor messages
-pub enum ReturnData {
-    Nothing,
-    String(String)
-}
+#[derive(Debug)]
+pub struct ReturnData(pub Parcel);
 
 impl Message for Note {
     type Result = Result<ReturnData, std::io::Error>;
@@ -34,8 +35,6 @@ impl Message for Note {
 
 #[derive(Debug)]
 pub struct Kernel {
-    pub ipfs_url: String,
-
     /// Client must send ping at least once per 10 seconds (CLIENT_TIMEOUT),
     /// otherwise we drop connection.
     pub hb: Instant,
@@ -64,13 +63,6 @@ impl Kernel {
 
             ctx.ping(b"");
         });
-    }
-
-    /// generate the Samaritan DID
-    pub fn generate_user_did(hash: &[u8]) -> String {
-        let hash = hash.to_owned();
-
-        String::from("did:sam:root:") + str::from_utf8(&hash[..]).unwrap()
     }
 }
 
@@ -117,14 +109,40 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                 // dispatch functions to respective actors based on numbers
                 let v: Vec<&str> = m.splitn(2, '#').collect();
 
-                match v[0] {
-                    "~1" => {
-                        self.ccl_addr.do_send(Note(101, Parcel::String(v[1].to_owned())));
-                    }
-                    _ => {}
-                }
+                future::block_on(async {
+                    match v[0] {
+                        "~1" => {
+                            match self.ccl_addr.send(Note(101, Parcel::String(v[1].to_owned()))).await {
+                                Ok(ret) => {
+                                    match ret.unwrap().0 {
+                                        Parcel::Tuple1(did, keys) => {
+                                            let res = json!({
+                                                "did": did,
+                                                "keys": keys,
+                                                "error": false
+                                            });
 
-                println!("{}", v[1]);
+                                            ctx.text(res.to_string())
+                                        },
+                                        _ => ctx.text(
+                                            json!({
+                                                "res": "fatal: could not complete request",
+                                                "error": true
+                                            }).to_string()
+                                        )
+                                    }
+                                }, 
+                                Err(_) => ctx.text(
+                                    json!({
+                                        "res": "fatal: could not complete request",
+                                        "error": true
+                                    }).to_string()
+                                )
+                            };
+                        }
+                        _ => {}
+                    }
+                });
             }
             ws::Message::Binary(_) => println!("Unexpected binary"),
             ws::Message::Close(reason) => {

@@ -1,15 +1,10 @@
 use std::{
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
     time::Instant,
 };
 
 use actix::*;
-use actix_files::{Files, NamedFile};
 use actix_web::{
-    middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer, Responder,
+    middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer, /* Responder , */
 };
 use actix_web_actors::ws;
 
@@ -26,7 +21,6 @@ async fn chat_route(
 ) -> Result<HttpResponse, Error> {
     ws::start(
         kernel::Kernel {
-            ipfs_url: String::new(),
             hb: Instant::now(),
             ccl_addr: ccl.get_ref().clone(),
         },
@@ -42,7 +36,7 @@ async fn main() -> std::io::Result<()> {
     log::info!("starting HTTP server at http://localhost:1509");
 
     // start the network actor
-    let netwrk = network::Network::new("dfjk".to_string()).start();
+    let netwrk = network::Network::new("empty".to_string()).start();
 
     // start chain client actor
     let client = chain::ChainClient::new(netwrk.clone()).start();
