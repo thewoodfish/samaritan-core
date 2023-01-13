@@ -44,7 +44,7 @@ impl ChainClient {
         let pair: ed25519Pair = key_box.0;
 
         // get did
-        let did = String::from("did:sam:root:") + &utility::get_did_suffix();
+        let did = String::from("did:sam:root:") + &utility::get_did_suffix(32);
 
         // upload to IPFS, but run it on another thread to minimize delay
         let ipfs_data = Network::upload_to_ipfs(str.to_owned()).await;

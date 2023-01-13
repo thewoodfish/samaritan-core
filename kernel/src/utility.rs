@@ -47,10 +47,10 @@ pub fn write_file<P: AsRef<Path>>(path: P) -> Result<BufWriter<File>> {
     Ok(BufWriter::new(file))
 }
 
-pub fn get_did_suffix() -> String {
+pub fn get_did_suffix(n: u32) -> String {
     let r = thread_rng()
         .sample_iter(&Alphanumeric)
-        .take(32)
+        .take(n as usize)
         .collect::<Vec<_>>();
 
     let mut sfx: String = String::from_utf8_lossy(&r).into();
@@ -60,7 +60,7 @@ pub fn get_did_suffix() -> String {
     let table = read_json_from_file(path);
 
     if table.contains_key(&sfx) {
-        sfx = get_did_suffix();
+        sfx = get_did_suffix(32);
     }
 
     sfx
@@ -69,7 +69,7 @@ pub fn get_did_suffix() -> String {
 // this just mimics the whole IPFS file upload and returns a false CID
 pub fn upload_to_ipfs_mimick(str: String)  -> ReturnData {
     // get pseudo-CID
-    let cid = get_did_suffix();
+    let cid = get_did_suffix(48);
     let path = "./files/".to_owned() + &cid + ".txt";
 
     let file = OpenOptions::new() 
