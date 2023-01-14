@@ -45,7 +45,7 @@ impl Network {
 
     pub async fn sync_hash_table(&mut self) {
         // read file 
-        // let buf = utility::read_file("./record/hash_table.json").unwrap();
+        // let buf = utility::read_file("./ipfs/hash_table.json").unwrap();
         // let inter: Value = serde_json::from_reader(buf).unwrap();
         // let hash_table = inter.as_str().unwrap().to_owned();
 

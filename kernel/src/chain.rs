@@ -38,50 +38,54 @@ impl ChainClient {
         }
     }
 
+    // HANGS!!!
+    // pub async fn get_did_and_keys(&self, str: &str) -> Result<Parcel, subxt::Error> {
+    //     // we have our 12 words now
+    //     let key_box = Pair::generate_with_phrase(None);
+    //     let pair: ed25519Pair = key_box.0;
+
+    //     // get did
+    //     let did = String::from("did:sam:root:") + &utility::get_random_str(32);
+
+    //     // upload to IPFS, but run it on another thread to minimize delay
+    //     let ipfs_data = Network::upload_to_ipfs(str.to_owned()).await;
+
+    //     let cid = match ipfs_data.unwrap().0 {
+    //         Parcel::String(str) => str.clone(),
+    //         _ => { String::new() }
+    //     };
+
+    //     // send message to network actor to upload to IPFS
+    //     self.network_addr.do_send(Note(101, Parcel::Empty));
+
+    //     // send transaction onchain
+    //     let signer = PairSigner::<PolkadotConfig, ed25519Pair>::new(pair);
+    //     let api = OnlineClient::<PolkadotConfig>::new().await?;
+
+    //     // Create a transaction to submit:
+    //     let tx = samaritan_node::tx()
+    //         .kernel()
+    //         .record_data_entry("samaritan_root_document".as_bytes().to_vec(), Vec::from(cid.to_owned()));
+
+    //     // Configure the transaction tip and era:
+    //     let tx_params = Params::new()
+    //         .tip(PlainTip::new(20_000_000_000))
+    //         .era(Era::Immortal, api.genesis_hash());
+
+    //     // submit the transaction:
+    //     let hash = api.tx().sign_and_submit(&tx, &signer, tx_params).await?;
+    //     println!("Samaritans root document tx submitted: {}", hash);
+
+    //     // return did and keys
+    //     Ok(Parcel::Tuple1(did, key_box.1))
+
+    // }
+
+    // parody
     pub async fn get_did_and_keys(&self, str: &str) -> Result<Parcel, subxt::Error> {
-        // we have our 12 words now
-        let key_box = Pair::generate_with_phrase(None);
-        let pair: ed25519Pair = key_box.0;
-
-        // get did
-        let did = String::from("did:sam:root:") + &utility::get_did_suffix(32);
-
-        // upload to IPFS, but run it on another thread to minimize delay
-        let ipfs_data = Network::upload_to_ipfs(str.to_owned()).await;
-
-        let cid = match ipfs_data.unwrap().0 {
-            Parcel::String(str) => str.clone(),
-            _ => { String::new() }
-        };
-
-        // save to local file and upload to ipfs in background
-        utility::update_hash_table(did.clone(), cid.to_owned());
-
-        // send message to network actor to upload to IPFS
-        self.network_addr.do_send(Note(101, Parcel::Empty));
-
-        // send transaction onchain
-        let signer = PairSigner::<PolkadotConfig, ed25519Pair>::new(pair);
-        let api = OnlineClient::<PolkadotConfig>::new().await?;
-
-        // Create a transaction to submit:
-        let tx = samaritan_node::tx()
-            .kernel()
-            .record_data_entry("samaritan_root_document".as_bytes().to_vec(), Vec::from(cid.to_owned()));
-
-        // Configure the transaction tip and era:
-        let tx_params = Params::new()
-            .tip(PlainTip::new(20_000_000_000))
-            .era(Era::Immortal, api.genesis_hash());
-
-        // submit the transaction:
-        let hash = api.tx().sign_and_submit(&tx, &signer, tx_params).await?;
-        println!("Samaritans root document tx submitted: {}", hash);
-
-        // return did and keys
-        Ok(Parcel::Tuple1(did, key_box.1))
-
+        Ok(utility::get_did_and_keys_mimick(str))
     }
+
 }
 
 impl Actor for ChainClient {
@@ -98,15 +102,13 @@ impl Handler<Note> for ChainClient {
                 future::block_on(async {
                     match msg.1 {
                         Parcel::String(str) => {
-                            ReturnData((self.get_did_and_keys(&str).await).unwrap_or(Parcel::Empty))
+                            Ok::<ReturnData, std::io::Error>(ReturnData((self.get_did_and_keys(&str).await).unwrap_or(Parcel::Empty)))
                         }
-                        _ => ReturnData(Parcel::Empty)
+                        _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty))
                     }
-                });
-            }
-            _ => {}
+                })
+            },
+            _ => Ok(ReturnData(Parcel::Empty))
         }
-
-        Ok(ReturnData(Parcel::Empty))
     }
 }

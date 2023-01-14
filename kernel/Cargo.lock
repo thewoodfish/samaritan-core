@@ -2798,6 +2798,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rand_word"
+version = "0.1.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2add0f093d241d315b84a8fe95a33b20cf24ca25f8242aee0f3dddfd70f1b285"
+dependencies = [
+ "rand 0.8.5",
+]
+
+[[package]]
 name = "redox_syscall"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2995,6 +3004,7 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "rand 0.8.5",
+ "rand_word",
  "serde",
  "serde_json",
  "sp-core 11.0.0",

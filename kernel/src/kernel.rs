@@ -110,34 +110,34 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                 let v: Vec<&str> = m.splitn(2, '#').collect();
 
                 future::block_on(async {
+                    let error = json!({
+                        "res": "fatal: could not complete request",
+                        "error": true
+                    }).to_string();
+
                     match v[0] {
                         "~1" => {
                             match self.ccl_addr.send(Note(101, Parcel::String(v[1].to_owned()))).await {
                                 Ok(ret) => {
-                                    match ret.unwrap().0 {
-                                        Parcel::Tuple1(did, keys) => {
-                                            let res = json!({
-                                                "did": did,
-                                                "keys": keys,
-                                                "error": false
-                                            });
+                                    match ret {
+                                        Ok(data) => {
+                                            match data.0 {
+                                                Parcel::Tuple1(did, keys) => {
+                                                    let res = json!({
+                                                        "did": did,
+                                                        "keys": keys,
+                                                        "error": false
+                                                    });
 
-                                            ctx.text(res.to_string())
+                                                    ctx.text(res.to_string())
+                                                },
+                                                _ => ctx.text(error)
+                                            }
                                         },
-                                        _ => ctx.text(
-                                            json!({
-                                                "res": "fatal: could not complete request",
-                                                "error": true
-                                            }).to_string()
-                                        )
+                                        Err(_) => ctx.text(error)
                                     }
                                 }, 
-                                Err(_) => ctx.text(
-                                    json!({
-                                        "res": "fatal: could not complete request",
-                                        "error": true
-                                    }).to_string()
-                                )
+                                Err(_) => ctx.text(error)
                             };
                         }
                         _ => {}
