@@ -1,6 +1,5 @@
-use std::fmt::format;
 use std::{collections::HashMap};
-use std::fs::File;
+use std::fs::{File, rename};
 use std::io::{BufReader, BufWriter, Write, Result};
 use std::path::Path;
 use std::fs::OpenOptions;
@@ -15,30 +14,27 @@ use crate::kernel::*;
 pub fn read_json_from_file<P: AsRef<Path>>(path: P) -> HashMap<String, String> {
     let reader = read_file(path).unwrap();
     serde_json::from_reader(reader).unwrap()
-
-    // format is 
-    // did => [cid, hash]
 }
 
-pub fn read_json_from_chain<P: AsRef<Path>>(path: P) -> HashMap<u64, (bool, String)> {
-    let reader = read_file(path).unwrap();
-    serde_json::from_reader(reader).unwrap()
+// pub fn read_json_from_chain<P: AsRef<Path>>(path: P) -> HashMap<u64, (bool, String)> {
+//     let reader = read_file(path).unwrap();
+//     serde_json::from_reader(reader).unwrap()
 
-    // format is 
-    // did => [key, (bool, cid)]
-}
+//     // format is 
+//     // did => [key, (bool, cid)]
+// }
 
-pub fn update_hash_table(did: String, cid: String) {
-    let path = "./ipfs/hash_table.json";
-    let mut table = read_json_from_file(path);
+// pub fn update_hash_table(did: String, cid: String) {
+//     let path = "./ipfs/hash_table.json";
+//     let mut table = read_json_from_file(path);
 
-    // append new
-    table.entry(did).or_insert(cid);
+//     // append new
+//     table.entry(did).or_insert(cid);
 
-    let mut writer = write_file(path).unwrap();
-    writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
-    writer.flush().ok();
-}
+//     let mut writer = write_file(path).unwrap();
+//     writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
+//     writer.flush().ok();
+// }
 
 pub fn read_file<P: AsRef<Path>>(path: P) -> Result<BufReader<File>> {
     // Open the file in read-only mode with buffer.
@@ -65,7 +61,7 @@ pub fn get_random_str(n: u32) -> String {
     let mut sfx: String = String::from_utf8_lossy(&r).into();
 
     // make sure it hasn't been previously assigned
-    let path = "./ipfs/hash_table.json";
+    let path = "./ipfs/".to_owned() + &get_hash_table_addr();
     let table = read_json_from_file(path);
 
     if table.contains_key(&sfx) {
@@ -75,11 +71,22 @@ pub fn get_random_str(n: u32) -> String {
     sfx
 }
 
+fn get_hash_table_addr() -> String {
+    // get the address of the root hash table from the chain
+    let path = "./chain/HashtableUri.json";
+    let root_addr= read_json_from_file(path);
+
+    let addr = root_addr.get("uri").unwrap();
+    // get the address 
+    format!("./ipfs/{}.json", addr)
+}
+
 // this just mimics the whole IPFS file upload and returns a false CID
 pub fn upload_to_ipfs_mimick(str: String)  -> ReturnData {
     // get pseudo-CID
-    let cid = get_random_str(48);
-    let path = "./files/".to_owned() + format!("{}", compute_hash(&cid.as_bytes())).as_str() + ".txt";
+    let cid = format!("{}", compute_hash(&str.as_bytes()));
+
+    let path = "./ipfs/".to_owned() + format!("{}", compute_hash(&cid.as_bytes())).as_str() + ".json";
 
     let file = OpenOptions::new() 
         .write(true)
@@ -90,9 +97,6 @@ pub fn upload_to_ipfs_mimick(str: String)  -> ReturnData {
     let mut writer = BufWriter::new(file);
     writer.write(&str.as_bytes()).ok();
     writer.flush().ok();
-
-    // update hash table
-    update_hash_table_uri(format!("{}", compute_hash(&str.as_bytes())));
 
     ReturnData(Parcel::String(cid))
 }
@@ -112,52 +116,74 @@ pub fn get_did_and_keys_mimick(str: &str) -> Parcel {
         _ => String::new()
     };
 
-    // record transaction
-    record_data_entry(did.clone(), "samaritan_root_document".to_owned(), cid);
+    // get the address 
+    let addr = get_hash_table_addr();
+
+    println!("{}", addr);
+
+    // retrieve the hash table from IPFS and update it
+    let mut table = read_json_from_file(addr.clone());
+
+    // append new
+    table.insert(did.clone(), cid);
+
+    let mut writer = write_file(addr.clone()).unwrap();
+    writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
+    writer.flush().ok();
+
+    update_hash_table_uri(table, addr);
 
     Parcel::Tuple1(did, generate_random_words(12))
 }
 
-// simulates chain function -> update_hashtable_uri
-pub fn update_hash_table_uri(uri: String) {
+pub fn update_hash_table_uri(table: HashMap<String, String>, addr: String) {
+    // get the hash of the new hash table
+    let table_str= serde_json::to_string(&table).unwrap();
+
+    // compute hash
+    let new_addr = format!("{}.json", compute_hash(&table_str.as_bytes()));
+
+    // rename file
+    rename(addr, new_addr.clone()).ok();
+
+    // update the chain, set new oot addr
+    set_hash_table_uri(new_addr);
+}
+
+fn set_hash_table_uri(uri: String) {
     let path = "./chain/HashtableUri.json";
-    let mut table = read_json_from_file(path);
+    let mut root_addr= read_json_from_file(path);
 
-    // append new
-    table.insert("uri".to_string(), uri);
-
-    let mut writer = write_file(path).unwrap();
-    writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
-    writer.flush().ok();
+    root_addr.entry("uri".to_owned()).or_insert(uri);
 }
 
 // simulates chain function -> record_data_entry
-pub fn record_data_entry(key1: String, key2: String, cid: String) {
-    let key = key1 + &key2;
-    let path = "./chain/FragRecord.json";
-    let mut table: HashMap<u64, (bool, String)> = read_json_from_chain(path);
+// pub fn record_data_entry(key1: String, key2: String, cid: String) {
+//     let key = key1 + &key2;
+//     let path = "./chain/FragRecord.json";
+//     let mut table: HashMap<u64, (bool, String)> = read_json_from_chain(path);
 
-    // append new
-    table.insert(compute_hash(key.as_bytes()), (true, cid));
+//     // append new
+//     table.insert(compute_hash(key.as_bytes()), (true, cid));
 
-    let mut writer = write_file(path).unwrap();
-    writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
-    writer.flush().ok();
-}
+//     let mut writer = write_file(path).unwrap();
+//     writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
+//     writer.flush().ok();
+// }
 
-// simulates chain function -> delete_data_entry
-pub fn delete_data_entry(key1: String, key2: String, cid: String) {
-    let key = key1 + &key2;
-    let path = "./chain/FragRecord.json";
-    let mut table: HashMap<u64, (bool, String)> = read_json_from_chain(path);
+// // simulates chain function -> delete_data_entry
+// pub fn delete_data_entry(key1: String, key2: String, cid: String) {
+//     let key = key1 + &key2;
+//     let path = "./chain/FragRecord.json";
+//     let mut table: HashMap<u64, (bool, String)> = read_json_from_chain(path);
 
-    // append new
-    table.insert(compute_hash(&key.as_bytes()[..]), (false, cid));
+//     // append new
+//     table.insert(compute_hash(&key.as_bytes()[..]), (false, cid));
 
-    let mut writer = write_file(path).unwrap();
-    writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
-    writer.flush().ok();
-}
+//     let mut writer = write_file(path).unwrap();
+//     writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
+//     writer.flush().ok();
+// }
 
 fn compute_hash(value: &[u8]) -> u64 {
     let s = RandomState::new();
