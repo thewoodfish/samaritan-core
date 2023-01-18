@@ -61,7 +61,7 @@ pub fn get_random_str(n: u32) -> String {
     let mut sfx: String = String::from_utf8_lossy(&r).into();
 
     // make sure it hasn't been previously assigned
-    let path = "./ipfs/".to_owned() + &get_hash_table_addr();
+    let path = get_hash_table_addr();
     let table = read_json_from_file(path);
 
     if table.contains_key(&sfx) {
@@ -77,8 +77,8 @@ fn get_hash_table_addr() -> String {
     let root_addr= read_json_from_file(path);
 
     let addr = root_addr.get("uri").unwrap();
-    // get the address 
-    format!("./ipfs/{}.json", addr)
+
+    addr.clone()
 }
 
 // this just mimics the whole IPFS file upload and returns a false CID
@@ -86,19 +86,19 @@ pub fn upload_to_ipfs_mimick(str: String)  -> ReturnData {
     // get pseudo-CID
     let cid = format!("{}", compute_hash(&str.as_bytes()));
 
-    let path = "./ipfs/".to_owned() + format!("{}", compute_hash(&cid.as_bytes())).as_str() + ".json";
+    let path = format!("./ipfs/{}.json", cid);
 
     let file = OpenOptions::new() 
         .write(true)
         .create_new(true)
-        .open(path)
+        .open(path.clone())
         .unwrap();
 
     let mut writer = BufWriter::new(file);
     writer.write(&str.as_bytes()).ok();
     writer.flush().ok();
 
-    ReturnData(Parcel::String(cid))
+    ReturnData(Parcel::Tuple1(cid, path))
 }
 
 // this just simulates the storage on a samaritan node
@@ -106,26 +106,24 @@ pub fn get_did_and_keys_mimick(str: &str) -> Parcel {
     let did = String::from("did:sam:root:") + &get_random_str(32);
 
     // upload to IPFS(files)
-    let cid = match upload_to_ipfs_mimick(str.to_string()) {
+    let cid_n_path  = match upload_to_ipfs_mimick(str.to_string()) {
         ReturnData(parcel) => {
             match parcel {
-                Parcel::String(str) => str.to_owned(),
-                _ => String::new()
+                Parcel::Tuple1(cid, path) => (cid, path),
+                _ => (String::new(), String::new())
             }
         },
-        _ => String::new()
+        _ => (String::new(), String::new())
     };
 
-    // get the address 
+    // get the address of the hash table from the chain
     let addr = get_hash_table_addr();
-
-    println!("{}", addr);
 
     // retrieve the hash table from IPFS and update it
     let mut table = read_json_from_file(addr.clone());
 
     // append new
-    table.insert(did.clone(), cid);
+    table.insert(did.clone(), cid_n_path.1);
 
     let mut writer = write_file(addr.clone()).unwrap();
     writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
@@ -141,7 +139,7 @@ pub fn update_hash_table_uri(table: HashMap<String, String>, addr: String) {
     let table_str= serde_json::to_string(&table).unwrap();
 
     // compute hash
-    let new_addr = format!("{}.json", compute_hash(&table_str.as_bytes()));
+    let new_addr = format!("./ipfs/{}.json", compute_hash(&table_str.as_bytes()));
 
     // rename file
     rename(addr, new_addr.clone()).ok();
@@ -152,9 +150,14 @@ pub fn update_hash_table_uri(table: HashMap<String, String>, addr: String) {
 
 fn set_hash_table_uri(uri: String) {
     let path = "./chain/HashtableUri.json";
-    let mut root_addr= read_json_from_file(path);
+    let mut table = read_json_from_file(path);
 
-    root_addr.entry("uri".to_owned()).or_insert(uri);
+    table.insert("uri".to_owned(), uri);
+
+    // write changes
+    let mut writer = write_file(path).unwrap();
+    writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
+    writer.flush().ok();
 }
 
 // simulates chain function -> record_data_entry
