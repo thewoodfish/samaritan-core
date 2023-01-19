@@ -2998,6 +2998,7 @@ dependencies = [
  "actix-web-actors",
  "derive_more",
  "env_logger",
+ "fnv",
  "futures-lite",
  "ipfs-api",
  "ipfs-api-backend-actix",

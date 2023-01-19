@@ -1,10 +1,10 @@
-use std::time::{Duration, Instant};
+use std::{time::{Duration, Instant}, collections::HashMap};
 
 use actix::prelude::*;
 use actix_web_actors::ws;
 use futures_lite::future;
-use std::str;
 use serde_json::json;
+use std::str;
 
 use crate::chain;
 
@@ -17,12 +17,15 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 // message to be passed between actors
 pub struct Note(pub u32, pub Parcel);
 
+// most common hashmap used
+pub type DidUriHashMap = HashMap<String, String>;
+
 /// parcel containing data
 #[derive(Debug)]
 pub enum Parcel {
     Empty,
     String(String),
-    Tuple1(String, String)
+    Tuple1(String, String),
 }
 
 /// types returned from actor messages
@@ -108,37 +111,86 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
 
                 // dispatch functions to respective actors based on numbers
                 let v: Vec<&str> = m.splitn(2, '#').collect();
+                let error = json!({
+                    "res": "fatal: an error has occured",
+                    "error": true
+                })
+                .to_string();
 
                 future::block_on(async {
-                    let error = json!({
-                        "res": "fatal: could not complete request",
-                        "error": true
-                    }).to_string();
-
                     match v[0] {
                         "~1" => {
-                            match self.ccl_addr.send(Note(101, Parcel::String(v[1].to_owned()))).await {
-                                Ok(ret) => {
-                                    match ret {
-                                        Ok(data) => {
-                                            match data.0 {
-                                                Parcel::Tuple1(did, keys) => {
-                                                    let res = json!({
-                                                        "did": did,
-                                                        "keys": keys,
-                                                        "error": false
-                                                    });
+                            // create new samaritan
+                            match self
+                                .ccl_addr
+                                .send(Note(101, Parcel::String(v[1].to_owned())))
+                                .await
+                            {
+                                Ok(ret) => match ret {
+                                    Ok(data) => match data.0 {
+                                        Parcel::Tuple1(did, keys) => {
+                                            let res = json!({
+                                                "did": did,
+                                                "keys": keys,
+                                                "error": false
+                                            });
 
-                                                    ctx.text(res.to_string())
-                                                },
-                                                _ => ctx.text(error)
-                                            }
-                                        },
-                                        Err(_) => ctx.text(error)
-                                    }
-                                }, 
-                                Err(_) => ctx.text(error)
+                                            ctx.text(res.to_string())
+                                        }
+                                        _ => ctx.text(error),
+                                    },
+                                    Err(_) => ctx.text(error),
+                                },
+                                Err(_) => ctx.text(error),
                             };
+                        }
+
+                        "~2" => {
+                            // new API key
+                            match self.ccl_addr.send(Note(102, Parcel::Empty)).await {
+                                Ok(ret) => match ret {
+                                    Ok(data) => match data.0 {
+                                        Parcel::Tuple1(did, keys) => {
+                                            let res = json!({
+                                                "did": did,
+                                                "keys": keys,
+                                                "error": false
+                                            });
+
+                                            ctx.text(res.to_string())
+                                        }
+                                        _ => ctx.text(error),
+                                    },
+                                    Err(_) => ctx.text(error),
+                                },
+                                Err(_) => ctx.text(error),
+                            };
+                        }
+
+                        "~3" => {
+                            // auth did
+                            match self
+                                .ccl_addr
+                                .send(Note(103, Parcel::String(v[1].to_owned())))
+                                .await
+                            {
+                                Ok(ret) => match ret {
+                                    Ok(data) => match data.0 {
+                                        Parcel::Tuple1(exists, did) => {
+                                            let res = json!({
+                                                "exists": exists,
+                                                "did": did,
+                                                "error": false
+                                            });
+
+                                            ctx.text(res.to_string())
+                                        }
+                                        _ => ctx.text(error),
+                                    },
+                                    Err(_) => ctx.text(error),
+                                },
+                                Err(_) => ctx.text(error),
+                            }
                         }
                         _ => {}
                     }

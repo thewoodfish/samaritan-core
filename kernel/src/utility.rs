@@ -1,40 +1,18 @@
-use std::{collections::HashMap};
-use std::fs::{File, rename};
-use std::io::{BufReader, BufWriter, Write, Result};
-use std::path::Path;
-use std::fs::OpenOptions;
-use std::collections::hash_map::RandomState;
-use std::hash::{BuildHasher, Hasher};
-use rand::{thread_rng, Rng};
-use rand::distributions::Alphanumeric;
-
 use crate::kernel::*;
+use rand::distributions::Alphanumeric;
+use rand::{thread_rng, Rng};
+use std::fs::OpenOptions;
+use std::fs::{rename, File};
+use std::hash::{Hasher};
+use std::io::{BufReader, BufWriter, Result, Write};
+use std::path::Path;
+use std::thread::spawn;
+use fnv::FnvHasher;
 
-
-pub fn read_json_from_file<P: AsRef<Path>>(path: P) -> HashMap<String, String> {
+pub fn read_json_from_file<P: AsRef<Path>>(path: P) -> DidUriHashMap {
     let reader = read_file(path).unwrap();
     serde_json::from_reader(reader).unwrap()
 }
-
-// pub fn read_json_from_chain<P: AsRef<Path>>(path: P) -> HashMap<u64, (bool, String)> {
-//     let reader = read_file(path).unwrap();
-//     serde_json::from_reader(reader).unwrap()
-
-//     // format is 
-//     // did => [key, (bool, cid)]
-// }
-
-// pub fn update_hash_table(did: String, cid: String) {
-//     let path = "./ipfs/hash_table.json";
-//     let mut table = read_json_from_file(path);
-
-//     // append new
-//     table.entry(did).or_insert(cid);
-
-//     let mut writer = write_file(path).unwrap();
-//     writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
-//     writer.flush().ok();
-// }
 
 pub fn read_file<P: AsRef<Path>>(path: P) -> Result<BufReader<File>> {
     // Open the file in read-only mode with buffer.
@@ -45,36 +23,37 @@ pub fn read_file<P: AsRef<Path>>(path: P) -> Result<BufReader<File>> {
 
 pub fn write_file<P: AsRef<Path>>(path: P) -> Result<BufWriter<File>> {
     // write back to file
-    let file = OpenOptions::new()
-        .write(true)
-        .open(path)?;
-
+    let file = OpenOptions::new().write(true).open(path)?;
     Ok(BufWriter::new(file))
 }
 
-pub fn get_random_str(n: u32) -> String {
+pub fn get_random_str(n: u32, scope: &str) -> String {
     let r = thread_rng()
         .sample_iter(&Alphanumeric)
         .take(n as usize)
         .collect::<Vec<_>>();
 
     let mut sfx: String = String::from_utf8_lossy(&r).into();
+    let mut path = String::with_capacity(50);
 
     // make sure it hasn't been previously assigned
-    let path = get_hash_table_addr();
-    let table = read_json_from_file(path);
+    if scope == "app" {
+        path = get_hash_table_addr("./chain/AppHashTableUri.json");
+    } else {
+        path = get_hash_table_addr("./chain/HashTableUri.json");
+    }
 
+    let table = read_json_from_file(path);
     if table.contains_key(&sfx) {
-        sfx = get_random_str(32);
+        sfx = get_random_str(32, "user");
     }
 
     sfx
 }
 
-fn get_hash_table_addr() -> String {
+fn get_hash_table_addr<T: AsRef<Path>>(path: T) -> String {
     // get the address of the root hash table from the chain
-    let path = "./chain/HashtableUri.json";
-    let root_addr= read_json_from_file(path);
+    let root_addr = read_json_from_file(path);
 
     let addr = root_addr.get("uri").unwrap();
 
@@ -82,13 +61,13 @@ fn get_hash_table_addr() -> String {
 }
 
 // this just mimics the whole IPFS file upload and returns a false CID
-pub fn upload_to_ipfs_mimick(str: String)  -> ReturnData {
+pub fn upload_to_ipfs_mimick(str: String) -> ReturnData {
     // get pseudo-CID
     let cid = format!("{}", compute_hash(&str.as_bytes()));
 
     let path = format!("./ipfs/{}.json", cid);
 
-    let file = OpenOptions::new() 
+    let file = OpenOptions::new()
         .write(true)
         .create_new(true)
         .open(path.clone())
@@ -103,21 +82,19 @@ pub fn upload_to_ipfs_mimick(str: String)  -> ReturnData {
 
 // this just simulates the storage on a samaritan node
 pub fn get_did_and_keys_mimick(str: &str) -> Parcel {
-    let did = String::from("did:sam:root:") + &get_random_str(32);
+    let did = String::from("did:sam:root:") + &get_random_str(32, "user");
 
     // upload to IPFS(files)
-    let cid_n_path  = match upload_to_ipfs_mimick(str.to_string()) {
-        ReturnData(parcel) => {
-            match parcel {
-                Parcel::Tuple1(cid, path) => (cid, path),
-                _ => (String::new(), String::new())
-            }
+    let cid_n_path = match upload_to_ipfs_mimick(str.to_string()) {
+        ReturnData(parcel) => match parcel {
+            Parcel::Tuple1(cid, path) => (cid, path),
+            _ => (String::new(), String::new()),
         },
-        _ => (String::new(), String::new())
+        _ => (String::new(), String::new()),
     };
 
     // get the address of the hash table from the chain
-    let addr = get_hash_table_addr();
+    let addr = get_hash_table_addr("./chain/HashtableUri.json");
 
     // retrieve the hash table from IPFS and update it
     let mut table = read_json_from_file(addr.clone());
@@ -126,17 +103,29 @@ pub fn get_did_and_keys_mimick(str: &str) -> Parcel {
     table.insert(did.clone(), cid_n_path.1);
 
     let mut writer = write_file(addr.clone()).unwrap();
-    writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
+    writer
+        .write(&serde_json::to_string(&table).unwrap().as_bytes())
+        .ok();
     writer.flush().ok();
 
-    update_hash_table_uri(table, addr);
+    let seed = generate_random_words(12);
 
-    Parcel::Tuple1(did, generate_random_words(12))
+    // update async
+    spawn(move || {
+        update_hash_table_uri(table, addr, "./chain/HashTableUri.json");
+    });
+    update_keyring(did.clone(), seed.clone());
+
+    Parcel::Tuple1(did, seed)
 }
 
-pub fn update_hash_table_uri(table: HashMap<String, String>, addr: String) {
+pub fn update_hash_table_uri<P: AsRef<Path> + Clone>(
+    table: DidUriHashMap,
+    addr: String,
+    storage: P,
+) {
     // get the hash of the new hash table
-    let table_str= serde_json::to_string(&table).unwrap();
+    let table_str = serde_json::to_string(&table).unwrap();
 
     // compute hash
     let new_addr = format!("./ipfs/{}.json", compute_hash(&table_str.as_bytes()));
@@ -145,52 +134,69 @@ pub fn update_hash_table_uri(table: HashMap<String, String>, addr: String) {
     rename(addr, new_addr.clone()).ok();
 
     // update the chain, set new oot addr
-    set_hash_table_uri(new_addr);
+    set_hash_table_uri(new_addr, storage);
 }
 
-fn set_hash_table_uri(uri: String) {
-    let path = "./chain/HashtableUri.json";
-    let mut table = read_json_from_file(path);
+fn set_hash_table_uri<P: AsRef<Path> + Clone>(uri: String, path: P) {
+    let mut table = read_json_from_file(path.clone());
 
     table.insert("uri".to_owned(), uri);
 
     // write changes
     let mut writer = write_file(path).unwrap();
-    writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
+    writer
+        .write(&serde_json::to_string(&table).unwrap().as_bytes())
+        .ok();
     writer.flush().ok();
 }
 
-// simulates chain function -> record_data_entry
-// pub fn record_data_entry(key1: String, key2: String, cid: String) {
-//     let key = key1 + &key2;
-//     let path = "./chain/FragRecord.json";
-//     let mut table: HashMap<u64, (bool, String)> = read_json_from_chain(path);
+// create new app entry
+pub fn create_api_keys_mimick() -> Parcel {
+    // generate did for app
+    let did = String::from("did:sam:app:") + &get_random_str(48, "app");
 
-//     // append new
-//     table.insert(compute_hash(key.as_bytes()), (true, cid));
+    // first get URI of hash table
+    let uri = get_hash_table_addr("./chain/AppHashTableUri.json");
 
-//     let mut writer = write_file(path).unwrap();
-//     writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
-//     writer.flush().ok();
-// }
+    // read the file
+    let mut map = read_json_from_file(uri.clone());
 
-// // simulates chain function -> delete_data_entry
-// pub fn delete_data_entry(key1: String, key2: String, cid: String) {
-//     let key = key1 + &key2;
-//     let path = "./chain/FragRecord.json";
-//     let mut table: HashMap<u64, (bool, String)> = read_json_from_chain(path);
+    // create a new file that'll serve as table for the application
+    let path = format!("./ipfs/{}.json", did.split(':').collect::<Vec<&str>>()[3]);
 
-//     // append new
-//     table.insert(compute_hash(&key.as_bytes()[..]), (false, cid));
+    let file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path.clone())
+        .unwrap();
 
-//     let mut writer = write_file(path).unwrap();
-//     writer.write(&serde_json::to_string(&table).unwrap().as_bytes()).ok();
-//     writer.flush().ok();
-// }
+    let mut writer = BufWriter::new(file);
+    writer.write(b"{}").ok();
+    writer.flush().ok();
+
+    // update root hash table
+    map.insert(did.clone(), path.clone());
+
+    let mut writer = write_file(uri.clone()).unwrap();
+    writer
+        .write(&serde_json::to_string(&map).unwrap().as_bytes())
+        .ok();
+    writer.flush().ok();
+
+    let seed = generate_random_words(12);
+
+    // update async
+    spawn(move || {
+        update_hash_table_uri(map, uri, "./chain/AppHashTableUri.json");
+    });
+
+    update_keyring(did.clone(), seed.clone());
+
+    Parcel::Tuple1(did, seed)
+}
 
 fn compute_hash(value: &[u8]) -> u64 {
-    let s = RandomState::new();
-    let mut hasher = s.build_hasher();
+    let mut hasher = FnvHasher::default();
 
     hasher.write(value);
     hasher.finish()
@@ -198,4 +204,44 @@ fn compute_hash(value: &[u8]) -> u64 {
 
 fn generate_random_words(n: u32) -> String {
     rand_word::new(n as usize)
+}
+
+fn update_keyring(did: String, seed: String) {
+    let path = "./chain/Keyring.json";
+    let mut table = read_json_from_file(path.clone());
+
+    table.insert(format!("{}", compute_hash(&seed.as_bytes())), did);
+
+    // write changes
+    let mut writer = write_file(path).unwrap();
+    writer
+        .write(&serde_json::to_string(&table).unwrap().as_bytes())
+        .ok();
+    writer.flush().ok();
+}
+
+// auhenticate from keyring
+pub fn authenticate(keys: String) -> (String, String) {
+    // hash and compare
+    let path = "./chain/Keyring.json";
+    let table = read_json_from_file(path.clone());
+    let seed = format!("{}", compute_hash(&keys.as_bytes()));
+    let mut exists = "false";
+    let mut did = String::new();
+
+    if let Some(id) = table.get(&seed) {
+        exists = "true";
+        did = id.clone();
+    }
+
+    (exists.into(), did)
+} 
+
+// check whether DID represents app
+pub fn is_app(str: &str) -> bool {
+    if str.split(":").collect::<Vec<&str>>()[2] == "app" {
+        true
+    } else {
+        false
+    }
 }

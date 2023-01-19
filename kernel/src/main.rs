@@ -1,10 +1,9 @@
-use std::{
-    time::Instant,
-};
+use std::time::Instant;
 
 use actix::*;
 use actix_web::{
-    middleware::Logger, web, App, Error, HttpRequest, HttpResponse, HttpServer, /* Responder , */
+    middleware::Logger, web, App, Error, HttpRequest, HttpResponse,
+    HttpServer, /* Responder , */
 };
 use actix_web_actors::ws;
 
@@ -28,7 +27,7 @@ async fn chat_route(
         stream,
     )
 }
- 
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init_from_env(env_logger::Env::new().default_filter_or("info"));

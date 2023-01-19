@@ -1,7 +1,5 @@
-use crate::kernel::{ReturnData};
-use crate::kernel::{
-    Parcel, Note
-};
+use crate::kernel::ReturnData;
+use crate::kernel::{Note, Parcel};
 use crate::{network::*, utility};
 
 use actix::prelude::*;
@@ -9,33 +7,29 @@ use futures_lite::future;
 
 // use sp_keyring::AccountKeyring
 use subxt::{
+    config::{SubstrateConfig, WithExtrinsicParams},
     ext::sp_core::{crypto::Pair, ed25519::Pair as ed25519Pair},
     tx::{
-        Era,
-        PairSigner,
-        PlainTip,
+        Era, PairSigner, PlainTip, PolkadotExtrinsicParams,
         PolkadotExtrinsicParamsBuilder as Params,
-        PolkadotExtrinsicParams
     },
     OnlineClient,
-    config::{ SubstrateConfig, WithExtrinsicParams }
 };
 
 #[subxt::subxt(runtime_metadata_path = "metadata.scale")]
-pub mod samaritan_node { }
+pub mod samaritan_node {}
 
-type PolkadotConfig = WithExtrinsicParams<SubstrateConfig, PolkadotExtrinsicParams<SubstrateConfig>>;
+type PolkadotConfig =
+    WithExtrinsicParams<SubstrateConfig, PolkadotExtrinsicParams<SubstrateConfig>>;
 
 #[derive(Debug)]
 pub struct ChainClient {
-    network_addr: Addr<Network>
+    network_addr: Addr<Network>,
 }
 
 impl ChainClient {
     pub fn new(network_addr: Addr<Network>) -> ChainClient {
-        ChainClient {
-            network_addr
-        }
+        ChainClient { network_addr }
     }
 
     // HANGS!!!
@@ -86,6 +80,22 @@ impl ChainClient {
         Ok(utility::get_did_and_keys_mimick(str))
     }
 
+    // parody
+    pub async fn create_api_keys(&self) -> Result<Parcel, subxt::Error> {
+        Ok(utility::create_api_keys_mimick())
+    }
+
+    // parody
+    pub async fn auth_did(&self, str: String) -> Result<Parcel, subxt::Error> {
+        let ret = utility::authenticate(str);
+        if ret.0 == "true" && utility::is_app(&ret.1) {
+            // let network prepare the database for request for the DID to speed up response
+            self.network_addr
+                .do_send(Note(102, Parcel::String(ret.0.clone())));
+        }
+
+        Ok(Parcel::Tuple1(ret.0, ret.1))
+    }
 }
 
 impl Actor for ChainClient {
@@ -98,16 +108,26 @@ impl Handler<Note> for ChainClient {
     /// handle incoming "Note" and dispatch to various appropriate methods
     fn handle(&mut self, msg: Note, _: &mut Context<Self>) -> Self::Result {
         match &msg.0 {
-            101 => {
-                future::block_on(async {
-                    match msg.1 {
-                        Parcel::String(str) => {
-                            Ok::<ReturnData, std::io::Error>(ReturnData((self.get_did_and_keys(&str).await).unwrap_or(Parcel::Empty)))
-                        }
-                        _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty))
-                    }
-                })
-            },
+            101 => future::block_on(async {
+                match msg.1 {
+                    Parcel::String(str) => Ok::<ReturnData, std::io::Error>(ReturnData(
+                        (self.get_did_and_keys(&str).await).unwrap_or(Parcel::Empty),
+                    )),
+                    _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                }
+            }),
+            102 => future::block_on(async {
+                let data = (self.create_api_keys().await).unwrap();
+                return Ok(ReturnData(data));
+            }),
+            103 => future::block_on(async {
+                match msg.1 {
+                    Parcel::String(str) => Ok::<ReturnData, std::io::Error>(ReturnData(
+                        (self.auth_did(str).await).unwrap_or(Parcel::Empty),
+                    )),
+                    _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                }
+            }),
             _ => Ok(ReturnData(Parcel::Empty))
         }
     }
