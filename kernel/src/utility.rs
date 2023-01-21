@@ -1,15 +1,22 @@
 use crate::kernel::*;
+use fnv::FnvHasher;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
+use serde_json::{Value};
+use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::fs::{rename, File};
-use std::hash::{Hasher};
-use std::io::{BufReader, BufWriter, Result, Write};
+use std::hash::Hasher;
+use std::io::{BufReader, BufWriter, Read, Result, Write};
 use std::path::Path;
 use std::thread::spawn;
-use fnv::FnvHasher;
 
-pub fn read_json_from_file<P: AsRef<Path>>(path: P) -> DidUriHashMap {
+pub fn read_json_from_file<P: AsRef<Path>>(path: P) -> StringHashMap {
+    let reader = read_file(path).unwrap();
+    serde_json::from_reader(reader).unwrap()
+}
+
+pub fn read_json_from_file_raw<P: AsRef<Path>>(path: P) -> HashMap<String, Value> {
     let reader = read_file(path).unwrap();
     serde_json::from_reader(reader).unwrap()
 }
@@ -120,7 +127,7 @@ pub fn get_did_and_keys_mimick(str: &str) -> Parcel {
 }
 
 pub fn update_hash_table_uri<P: AsRef<Path> + Clone>(
-    table: DidUriHashMap,
+    table: StringHashMap,
     addr: String,
     storage: P,
 ) {
@@ -195,7 +202,7 @@ pub fn create_api_keys_mimick() -> Parcel {
     Parcel::Tuple1(did, seed)
 }
 
-fn compute_hash(value: &[u8]) -> u64 {
+pub fn compute_hash(value: &[u8]) -> u64 {
     let mut hasher = FnvHasher::default();
 
     hasher.write(value);
@@ -235,7 +242,7 @@ pub fn authenticate(keys: String) -> (String, String) {
     }
 
     (exists.into(), did)
-} 
+}
 
 // check whether DID represents app
 pub fn is_app(str: &str) -> bool {
@@ -244,4 +251,37 @@ pub fn is_app(str: &str) -> bool {
     } else {
         false
     }
+}
+
+pub fn get_did_suffix(did: String) -> String {
+    did.splitn(3, ":").collect::<Vec<&str>>()[2].into()
+}
+
+pub fn get_did_hashtable(did: &String) -> StringHashMap {
+    // get the address of the hash table from the chain
+    let addr = get_hash_table_addr("./chain/HashtableUri.json");
+    let did_root_table: StringHashMap = read_json_from_file(addr);
+
+    // get file table uri
+    let did_file_uri = did_root_table.get(did).unwrap();
+    let mut reader = read_file(did_file_uri).unwrap();
+    let mut temp_str = String::new();
+    reader.read_to_string(&mut temp_str);
+
+    let table: Value = serde_json::from_str(&temp_str).unwrap();
+    let hash_table = table["hash_table"].clone();
+
+    convert_to_hashmap(hash_table)
+}
+
+fn convert_to_hashmap(json: Value) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    if let Value::Object(obj) = json {
+        for (key, value) in obj {
+            if let Value::String(string_value) = value {
+                map.insert(key, string_value);
+            }
+        }
+    }
+    map
 }

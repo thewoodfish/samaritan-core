@@ -1,4 +1,7 @@
-use std::{time::{Duration, Instant}, collections::HashMap};
+use std::{
+    collections::HashMap,
+    time::{Duration, Instant},
+};
 
 use actix::prelude::*;
 use actix_web_actors::ws;
@@ -6,7 +9,7 @@ use futures_lite::future;
 use serde_json::json;
 use std::str;
 
-use crate::chain;
+use crate::{chain, network};
 
 /// How often heartbeat pings are sent
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -18,7 +21,7 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct Note(pub u32, pub Parcel);
 
 // most common hashmap used
-pub type DidUriHashMap = HashMap<String, String>;
+pub type StringHashMap = HashMap<String, String>;
 
 /// parcel containing data
 #[derive(Debug)]
@@ -41,9 +44,10 @@ pub struct Kernel {
     /// Client must send ping at least once per 10 seconds (CLIENT_TIMEOUT),
     /// otherwise we drop connection.
     pub hb: Instant,
-
     /// address of chain client actor
     pub ccl_addr: Addr<chain::ChainClient>,
+    // address of network actor
+    pub net_addr: Addr<network::Network>,
 }
 
 impl Kernel {
@@ -171,6 +175,39 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                             // auth did
                             match self
                                 .ccl_addr
+                                .send(Note(103, Parcel::String(v[1].to_owned())))
+                                .await
+                            {
+                                Ok(ret) => match ret {
+                                    Ok(data) => match data.0 {
+                                        Parcel::Tuple1(exists, did) => {
+                                            let res = json!({
+                                                "exists": exists,
+                                                "did": did,
+                                                "error": false
+                                            });
+
+                                            ctx.text(res.to_string())
+                                        }
+                                        _ => ctx.text(error),
+                                    },
+                                    Err(_) => ctx.text(error),
+                                },
+                                Err(_) => ctx.text(error),
+                            }
+                        }
+
+                        "~4" => {
+                            // insert record
+                            let res = json!({
+                                "success": true,
+                                "error": false
+                            });
+
+                            println!("{:?}", v);
+                            
+                            match self
+                                .net_addr
                                 .send(Note(103, Parcel::String(v[1].to_owned())))
                                 .await
                             {

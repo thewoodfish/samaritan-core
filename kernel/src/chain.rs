@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::kernel::ReturnData;
 use crate::kernel::{Note, Parcel};
 use crate::{network::*, utility};
@@ -5,6 +7,7 @@ use crate::{network::*, utility};
 use actix::prelude::*;
 use futures_lite::future;
 
+use serde_json::json;
 // use sp_keyring::AccountKeyring
 use subxt::{
     config::{SubstrateConfig, WithExtrinsicParams},
@@ -91,10 +94,30 @@ impl ChainClient {
         if ret.0 == "true" && utility::is_app(&ret.1) {
             // let network prepare the database for request for the DID to speed up response
             self.network_addr
-                .do_send(Note(102, Parcel::String(ret.0.clone())));
+                .do_send(Note(102, Parcel::String(ret.1.clone())));
         }
 
         Ok(Parcel::Tuple1(ret.0, ret.1))
+    }
+
+    // parody
+    pub async fn record_data_entry(hash_key: String, file_addr: String) {
+        let path = "./chain/DataRecord.json";
+        let mut table = utility::read_json_from_file(path.clone());
+
+        let data = json!({
+            "uri": file_addr,
+            "can_access": true      
+        });
+
+        table.entry(hash_key).or_insert(serde_json::to_string(&data).unwrap());
+
+        // save
+        let mut writer = utility::write_file(path).unwrap();
+        writer
+            .write(&serde_json::to_string(&table).unwrap().as_bytes())
+            .ok();
+        writer.flush().ok();
     }
 }
 
