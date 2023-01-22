@@ -198,14 +198,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                         }
 
                         "~4" => {
-                            // insert record
-                            let res = json!({
-                                "success": true,
-                                "error": false
-                            });
-
-                            println!("{:?}", v);
-                            
                             match self
                                 .net_addr
                                 .send(Note(103, Parcel::String(v[1].to_owned())))
@@ -213,10 +205,9 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                             {
                                 Ok(ret) => match ret {
                                     Ok(data) => match data.0 {
-                                        Parcel::Tuple1(exists, did) => {
+                                        Parcel::String(_) => {
                                             let res = json!({
-                                                "exists": exists,
-                                                "did": did,
+                                                "success": true,
                                                 "error": false
                                             });
 

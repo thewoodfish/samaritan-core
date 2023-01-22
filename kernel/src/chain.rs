@@ -78,17 +78,17 @@ impl ChainClient {
 
     // }
 
-    // parody
+    // simple alternative
     pub async fn get_did_and_keys(&self, str: &str) -> Result<Parcel, subxt::Error> {
         Ok(utility::get_did_and_keys_mimick(str))
     }
 
-    // parody
+    // simple alternative
     pub async fn create_api_keys(&self) -> Result<Parcel, subxt::Error> {
         Ok(utility::create_api_keys_mimick())
     }
 
-    // parody
+    // simple alternative
     pub async fn auth_did(&self, str: String) -> Result<Parcel, subxt::Error> {
         let ret = utility::authenticate(str);
         if ret.0 == "true" && utility::is_app(&ret.1) {
@@ -100,7 +100,7 @@ impl ChainClient {
         Ok(Parcel::Tuple1(ret.0, ret.1))
     }
 
-    // parody
+    // simple alternative
     pub async fn record_data_entry(hash_key: String, file_addr: String) {
         let path = "./chain/DataRecord.json";
         let mut table = utility::read_json_from_file(path.clone());

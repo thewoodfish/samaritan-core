@@ -1,8 +1,9 @@
 use crate::kernel::*;
+use actix_web::web::Json;
 use fnv::FnvHasher;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use serde_json::{Value};
+use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::fs::{rename, File};
@@ -257,13 +258,9 @@ pub fn get_did_suffix(did: String) -> String {
     did.splitn(3, ":").collect::<Vec<&str>>()[2].into()
 }
 
-pub fn get_did_hashtable(did: &String) -> StringHashMap {
-    // get the address of the hash table from the chain
-    let addr = get_hash_table_addr("./chain/HashtableUri.json");
-    let did_root_table: StringHashMap = read_json_from_file(addr);
-
-    // get file table uri
-    let did_file_uri = did_root_table.get(did).unwrap();
+pub fn get_sam_hashtable(did: &String) -> StringHashMap {
+    // get samaritan did document uri
+    let did_file_uri = get_sam_ht_uri(did);
     let mut reader = read_file(did_file_uri).unwrap();
     let mut temp_str = String::new();
     reader.read_to_string(&mut temp_str);
@@ -272,6 +269,42 @@ pub fn get_did_hashtable(did: &String) -> StringHashMap {
     let hash_table = table["hash_table"].clone();
 
     convert_to_hashmap(hash_table)
+}
+
+pub fn get_app_htable_uri(did: &String) -> String {
+    // get the address of the hash table from the chain
+    let apps_ht_uri = get_hash_table_addr("./chain/AppHashtableUri.json");
+    let apps_root_table: StringHashMap = read_json_from_file(apps_ht_uri);
+
+    // get file table uri
+    apps_root_table.get(did).unwrap().into()
+}
+
+pub fn get_sam_ht_uri(did: &String) -> String {
+    let addr = get_hash_table_addr("./chain/HashtableUri.json");
+    let did_root_table: StringHashMap = read_json_from_file(addr);
+
+    // get file table uri
+    did_root_table.get(did).unwrap().into()
+}
+
+pub fn save_sam_htable(table: &StringHashMap, did: &String) {
+    // save the modified hashtable in the did document
+    let path = get_sam_ht_uri(did);
+    let mut reader = read_file(path.clone()).unwrap();
+    let mut temp_str = String::new();
+    
+    reader.read_to_string(&mut temp_str);
+
+    let mut did_doc: Value = serde_json::from_str(&temp_str).unwrap();
+    did_doc["hash_table"] = json!(table);
+
+    // read file
+    let mut writer = write_file(path).unwrap();
+    writer
+        .write(&serde_json::to_string(&did_doc).unwrap().as_bytes())
+        .ok();
+    writer.flush().ok();
 }
 
 fn convert_to_hashmap(json: Value) -> HashMap<String, String> {
