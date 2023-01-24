@@ -1,1 +1,24 @@
-{"celebrity_crush":{"age":26,"career":"actress","name":"Ella Balinska","nationality":"british"},"cities":["paris","Vienna","London","New York City"],"config":{"clan":"Stark","engine":"unreal"}}
+{
+    "cookie": [
+        23,
+        45
+    ],
+    "celebrity_crush": {
+        "age": 26,
+        "career": "actress",
+        "name": "Ella Balinska",
+        "nationality": "british"
+    },
+    "cities": [
+        "paris",
+        "Vienna",
+        "London",
+        "New York City"
+    ],
+    "secret": "He's afraid of cats",
+    "did:sam:root:FHmIiyg6upvEkgr2t7sApjZkytHpB40m": "./ipfs/files/5615004220326759760.json",
+    "config": {
+        "clan": "Stark",
+        "engine": "unreal"
+    }
+}

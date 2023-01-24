@@ -1,0 +1,58 @@
+{
+    "did_doc": {
+        "authentication": [
+            {
+                "id": "#authentication",
+                "publicKey": {
+                    "0": 94,
+                    "1": 40,
+                    "10": 70,
+                    "11": 198,
+                    "12": 12,
+                    "13": 0,
+                    "14": 177,
+                    "15": 109,
+                    "16": 143,
+                    "17": 16,
+                    "18": 24,
+                    "19": 112,
+                    "2": 146,
+                    "20": 15,
+                    "21": 48,
+                    "22": 186,
+                    "23": 226,
+                    "24": 104,
+                    "25": 162,
+                    "26": 1,
+                    "27": 44,
+                    "28": 163,
+                    "29": 180,
+                    "3": 98,
+                    "30": 135,
+                    "31": 4,
+                    "4": 88,
+                    "5": 189,
+                    "6": 95,
+                    "7": 221,
+                    "8": 135,
+                    "9": 199
+                },
+                "type": "sr25519"
+            }
+        ],
+        "name": "nana",
+        "service": [
+            {
+                "id": "#claims-repo",
+                "serviceEndpoint": [],
+                "type": [
+                    "KiltPublishedCredentialCollectionV1"
+                ]
+            }
+        ],
+        "uri": "did:kilt:light:004q3XNoaQy3FLhjFdgcFVA4tthZkvWLJ2RrJorNEisTUSNhSC:z12kzoP7CHDbMDabSxTdbsB5vdV4rdbtr6BQdU5pxxVKUGrQSFeaj1BE4DoTSUyvMQjf9CDReXQLBCYmqJi9M5dCmTWWM4r4bR9x4ufusm3ZLz6b"
+    },
+    "hash_table": {
+        "did:sam:app:kxy278rC5rT8H1U9YSa9N6mv1uifxq6QD5oIOKNivf1zisGA": "./ipfs/files/5615004220326759760.json"
+    }
+}

@@ -1,0 +1,17 @@
+{
+    "friends": [
+        "Sacha",
+        "Micah"
+    ],
+    "profile": {
+        "age": 32,
+        "name": "jack Sparrow",
+        "occupation": "Pirate"
+    },
+    "orders": [
+        "milk",
+        "eggs",
+        "plantain",
+        "orange"
+    ]
+}

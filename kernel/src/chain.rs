@@ -103,14 +103,14 @@ impl ChainClient {
     // simple alternative
     pub async fn record_data_entry(hash_key: String, file_addr: String) {
         let path = "./chain/DataRecord.json";
-        let mut table = utility::read_json_from_file(path.clone());
+        let mut table = utility::read_json_from_file_raw(path.clone());
 
         let data = json!({
             "uri": file_addr,
             "can_access": true      
         });
 
-        table.entry(hash_key).or_insert(serde_json::to_string(&data).unwrap());
+        table.entry(hash_key).or_insert(data);
 
         // save
         let mut writer = utility::write_file(path).unwrap();

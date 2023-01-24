@@ -6,7 +6,7 @@ use std::{
 use actix::prelude::*;
 use actix_web_actors::ws;
 use futures_lite::future;
-use serde_json::json;
+use serde_json::{json, Value};
 use std::str;
 
 use crate::{chain, network};
@@ -115,7 +115,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
 
                 // dispatch functions to respective actors based on numbers
                 let v: Vec<&str> = m.splitn(2, '#').collect();
-                let error = json!({
+                let mut error = json!({
                     "res": "fatal: an error has occured",
                     "error": true
                 })
@@ -218,6 +218,36 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                                     Err(_) => ctx.text(error),
                                 },
                                 Err(_) => ctx.text(error),
+                            }
+                        }
+
+                        "~5" => {
+                            error = json!({
+                                "exists": false
+                            })
+                            .to_string();
+
+                            let ret = self
+                                .net_addr
+                                .send(Note(104, Parcel::String(v[1].to_owned())))
+                                .await;
+
+                            println!("{:?}", ret);
+
+                            if let Ok(data_result) = ret {
+                                if let Ok(data) = data_result {
+                                    let parcel = data.0;
+                                    if let Parcel::String(val_str) = parcel {
+                                        let res: Value = serde_json::from_str(&val_str).unwrap();
+                                        ctx.text(res.to_string())
+                                    } else {
+                                        ctx.text(error)
+                                    }
+                                } else {
+                                    ctx.text(error)
+                                }
+                            } else {
+                                ctx.text(error)
                             }
                         }
                         _ => {}

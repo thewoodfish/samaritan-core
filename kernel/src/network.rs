@@ -2,11 +2,15 @@
 use crate::{
     chain::{self, ChainClient},
     kernel::{self, Parcel, ReturnData, StringHashMap},
-    utility,
+    utility::{self, compute_hash},
 };
 use actix::prelude::*;
-use serde_json::Value;
-use std::io::{BufReader, BufWriter, Result, Write};
+use serde_json::{json, Value};
+use std::{
+    collections::HashMap,
+    fs,
+    io::{BufReader, BufWriter, Result, Write},
+};
 use std::{
     fmt::Debug,
     fs::{File, OpenOptions},
@@ -160,7 +164,7 @@ impl Network {
         }
     }
 
-    fn insert_record(&self, param: String) {
+    fn insert_record(&mut self, param: String) {
         let params: Vec<&str> = param.split("#").collect();
         if params[0] == "" {
             self.insert_new_node(
@@ -184,7 +188,7 @@ impl Network {
     }
 
     fn insert_did_node(
-        &self,
+        &mut self,
         sam_did: String,
         key: String,
         val: String,
@@ -192,7 +196,7 @@ impl Network {
     ) -> (String, String) {
         // check cache first
         let mut app_ht_uri = String::with_capacity(64);
-        let mut app_hashtable = StringHashMap::new();
+        let mut app_hashtable: HashMap<String, Value>;
         for c in &self.app_uri_cache {
             if c.data.contains_key(&app_did) {
                 app_ht_uri = c.data.get(&app_did).unwrap().clone();
@@ -204,17 +208,18 @@ impl Network {
         if app_ht_uri.is_empty() {
             // get manually
             app_ht_uri = utility::get_app_htable_uri(&app_did);
+
+            // insert into cache
+            self.set_cache_url(app_did.clone(), app_ht_uri.clone());
         }
 
         // retrieve contents from the file location
-        app_hashtable = utility::read_json_from_file(app_ht_uri.clone());
+        app_hashtable = utility::read_json_from_file_raw(app_ht_uri.clone());
 
         // the file uri name is hash(`did of app` + `did of samaritan`)
-        let hash_key = app_did.clone() + sam_did.as_str();
-        let file_url = format!(
-            "./ipfs/files/{}.json",
-            utility::compute_hash(&hash_key.as_bytes()[..])
-        );
+        let h_key = app_did.clone() + sam_did.as_str();
+        let hash_key = format!("{}", compute_hash(&h_key.as_bytes()[..]));
+        let file_url = format!("./ipfs/files/{}.json", hash_key);
 
         // update the hash table of the did, to link to the common file
         let mut sam_htable: StringHashMap = utility::get_sam_hashtable(&sam_did);
@@ -227,8 +232,14 @@ impl Network {
 
         // check for the did entry in the apps hash table
         if !app_hashtable.contains_key(&sam_did) {
+            // change the URL string to a JSON value
+            let json_file_url = format!(
+                r#"["./ipfs/files/{}.json"]"#,
+                utility::compute_hash(&hash_key.as_bytes()[..])
+            );
+            let json_str = serde_json::from_str(json_file_url.as_str()).unwrap();
             // create entry
-            app_hashtable.insert(sam_did.clone(), file_url.clone());
+            app_hashtable.insert(sam_did.clone(), json_str);
 
             // save entry
             let mut writer = utility::write_file(app_ht_uri.clone()).unwrap();
@@ -236,21 +247,10 @@ impl Network {
                 .write(&serde_json::to_string(&app_hashtable).unwrap().as_bytes())
                 .ok();
             writer.flush().ok();
-
-            // create the new file
-            let file = OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(file_url.clone())
-                .unwrap();
-
-            let mut writer = BufWriter::new(file);
-            writer.write(b"{}").ok();
-            writer.flush().ok();
         }
 
         // read file and write to it
-        let mut kv_store = utility::read_json_from_file(file_url.clone());
+        let mut kv_store = utility::read_json_from_file_raw(file_url.clone());
         kv_store
             .entry(key)
             .or_insert(serde_json::from_str(&val).unwrap());
@@ -265,11 +265,8 @@ impl Network {
         (hash_key, file_url)
     }
 
-    fn insert_new_node(&self, key: String, val: Value, app_did: String) {
+    fn insert_new_node(&mut self, key: String, val: Value, app_did: String) {
         let mut uri = String::with_capacity(50);
-
-        println!("{:?}", self.app_uri_cache);
-        println!("{:?}", app_did);
 
         // get hashtable address from cache
         for i in &self.app_uri_cache {
@@ -279,7 +276,14 @@ impl Network {
             }
         }
 
-        println!("{:?}", uri);
+        // if not found in cache
+        if uri.is_empty() {
+            // get manually
+            uri = utility::get_app_htable_uri(&app_did);
+
+            // insert into cache
+            self.set_cache_url(app_did.clone(), uri.clone());
+        }
 
         // read from address
         let mut app_htable = utility::read_json_from_file_raw(uri.clone());
@@ -291,6 +295,108 @@ impl Network {
             .write(&serde_json::to_string(&app_htable).unwrap().as_bytes())
             .ok();
         writer.flush().ok();
+    }
+
+    async fn get_record(&mut self, param: String) -> Option<Value> {
+        let params: Vec<&str> = param.split("#").collect();
+        if params[0] == "" {
+            self.get_app_record(params[1].into(), params[2].into())
+        } else {
+            self.get_did_record(params[0].into(), params[1].into(), params[2].into())
+        }
+    }
+
+    fn get_did_record(&mut self, sam_did: String, key: String, app_did: String) -> Option<Value> {
+        // frist open the root file of the app
+        let mut app_ht_uri = String::with_capacity(64);
+        let app_hashtable: HashMap<String, Value>;
+
+        // prepare hashkey 
+        let h_key = app_did.clone() + sam_did.as_str();
+        let hash_key = format!("{}", compute_hash(&h_key.as_bytes()[..]));
+
+        for c in &self.app_uri_cache {
+            if c.data.contains_key(&app_did) {
+                app_ht_uri = c.data.get(&app_did).unwrap().clone();
+                break;
+            }
+        }
+
+        // if not found in cache
+        if app_ht_uri.is_empty() {
+            // get manually
+            app_ht_uri = utility::get_app_htable_uri(&app_did);
+
+            // insert into cache
+            self.set_cache_url(app_did.clone(), app_ht_uri.clone());
+        }
+
+        // one more level of indirection
+        // read only the address of the file
+        app_hashtable = utility::read_json_from_file_raw(app_ht_uri.clone());
+
+        // check for existence
+        if app_hashtable.contains_key(&sam_did) {
+            // check chain if access is allowed
+            let chain_data = utility::read_json_from_file_raw("./chain/DataRecord.json");
+            if chain_data.contains_key(&hash_key) {
+                let record = chain_data.get(&hash_key).unwrap().clone();
+                let can_access = record["can_access"].as_bool().unwrap();
+                if can_access {
+                    // get storage file of did
+                    let storage_addr = record["uri"].as_str().unwrap();
+
+                    // read file
+                    let kv_store = utility::read_json_from_file_raw(storage_addr.clone());
+                    if kv_store.contains_key(&key) {
+                        let val = kv_store.get(&key).unwrap().clone();
+                        Some(val)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn get_app_record(&mut self, key: String, app_did: String) -> Option<Value> {
+        // frist open the root file of the app
+        let mut app_ht_uri = String::with_capacity(64);
+        let app_hashtable: HashMap<String, Value>;
+
+        for c in &self.app_uri_cache {
+            if c.data.contains_key(&app_did) {
+                app_ht_uri = c.data.get(&app_did).unwrap().clone();
+                break;
+            }
+        }
+
+        // if not found in cache
+        if app_ht_uri.is_empty() {
+            // get manually
+            app_ht_uri = utility::get_app_htable_uri(&app_did);
+
+            // insert into cache
+            self.set_cache_url(app_did.clone(), app_ht_uri.clone());
+        }
+
+        // read table and get the specific value asked for
+        app_hashtable = utility::read_json_from_file_raw(app_ht_uri.clone());
+
+        // check for existence
+        if app_hashtable.contains_key(&key) {
+            // get the value
+            let val = app_hashtable.get(&key).unwrap().clone();
+            Some(val)
+        } else {
+            None
+        }
     }
 }
 
@@ -332,9 +438,29 @@ impl Handler<Note> for Network {
 
                 return Ok(ReturnData(Parcel::String("blessed assurance!".to_owned())));
             }
+            
+            104 => {
+                // retreive from database
+                let data = future::block_on(async {
+                    match msg.1 {
+                        Parcel::String(params) => {
+                            match self.get_record(params).await {
+                                Some(val) => {
+                                    Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::String(serde_json::to_string(&val).unwrap())))
+                                },
+                                None => {
+                                    Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty))
+                                }
+                            }
+                        }
+                        _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty))
+                    }
+                });
+
+                return data;
+            }
             _ => {}
         }
-
         Ok(ReturnData(Parcel::Empty))
     }
 }

@@ -3,7 +3,7 @@ use actix_web::web::Json;
 use fnv::FnvHasher;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::fs::OpenOptions;
 use std::fs::{rename, File};
@@ -31,7 +31,10 @@ pub fn read_file<P: AsRef<Path>>(path: P) -> Result<BufReader<File>> {
 
 pub fn write_file<P: AsRef<Path>>(path: P) -> Result<BufWriter<File>> {
     // write back to file
-    let file = OpenOptions::new().write(true).open(path)?;
+    let file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(path)?;
     Ok(BufWriter::new(file))
 }
 
@@ -293,7 +296,7 @@ pub fn save_sam_htable(table: &StringHashMap, did: &String) {
     let path = get_sam_ht_uri(did);
     let mut reader = read_file(path.clone()).unwrap();
     let mut temp_str = String::new();
-    
+
     reader.read_to_string(&mut temp_str);
 
     let mut did_doc: Value = serde_json::from_str(&temp_str).unwrap();
