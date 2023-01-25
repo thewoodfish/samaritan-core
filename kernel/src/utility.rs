@@ -1,5 +1,4 @@
 use crate::kernel::*;
-use actix_web::web::Json;
 use fnv::FnvHasher;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
@@ -31,10 +30,7 @@ pub fn read_file<P: AsRef<Path>>(path: P) -> Result<BufReader<File>> {
 
 pub fn write_file<P: AsRef<Path>>(path: P) -> Result<BufWriter<File>> {
     // write back to file
-    let file = OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .open(path)?;
+    let file = OpenOptions::new().write(true).truncate(true).open(path)?;
     Ok(BufWriter::new(file))
 }
 
@@ -123,7 +119,7 @@ pub fn get_did_and_keys_mimick(str: &str) -> Parcel {
 
     // update async
     spawn(move || {
-        update_hash_table_uri(table, addr, "./chain/HashTableUri.json");
+        update_hash_table_uri(&table, addr, "./chain/HashTableUri.json");
     });
     update_keyring(did.clone(), seed.clone());
 
@@ -131,12 +127,12 @@ pub fn get_did_and_keys_mimick(str: &str) -> Parcel {
 }
 
 pub fn update_hash_table_uri<P: AsRef<Path> + Clone>(
-    table: StringHashMap,
+    table: &StringHashMap,
     addr: String,
     storage: P,
 ) {
     // get the hash of the new hash table
-    let table_str = serde_json::to_string(&table).unwrap();
+    let table_str = serde_json::to_string(table).unwrap();
 
     // compute hash
     let new_addr = format!("./ipfs/{}.json", compute_hash(&table_str.as_bytes()));
@@ -198,7 +194,7 @@ pub fn create_api_keys_mimick() -> Parcel {
 
     // update async
     spawn(move || {
-        update_hash_table_uri(map, uri, "./chain/AppHashTableUri.json");
+        update_hash_table_uri(&map, uri, "./chain/AppHashTableUri.json");
     });
 
     update_keyring(did.clone(), seed.clone());
@@ -257,16 +253,16 @@ pub fn is_app(str: &str) -> bool {
     }
 }
 
-pub fn get_did_suffix(did: String) -> String {
-    did.splitn(3, ":").collect::<Vec<&str>>()[2].into()
-}
+// pub fn get_did_suffix(did: String) -> String {
+//     did.splitn(3, ":").collect::<Vec<&str>>()[2].into()
+// }
 
 pub fn get_sam_hashtable(did: &String) -> StringHashMap {
     // get samaritan did document uri
     let did_file_uri = get_sam_ht_uri(did);
     let mut reader = read_file(did_file_uri).unwrap();
     let mut temp_str = String::new();
-    reader.read_to_string(&mut temp_str);
+    let _ = reader.read_to_string(&mut temp_str);
 
     let table: Value = serde_json::from_str(&temp_str).unwrap();
     let hash_table = table["hash_table"].clone();
@@ -297,7 +293,7 @@ pub fn save_sam_htable(table: &StringHashMap, did: &String) {
     let mut reader = read_file(path.clone()).unwrap();
     let mut temp_str = String::new();
 
-    reader.read_to_string(&mut temp_str);
+    let _ = reader.read_to_string(&mut temp_str);
 
     let mut did_doc: Value = serde_json::from_str(&temp_str).unwrap();
     did_doc["hash_table"] = json!(table);

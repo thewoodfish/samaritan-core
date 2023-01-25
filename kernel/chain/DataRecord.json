@@ -1,3 +1,14 @@
 {
-    "did:sam:app:kxy278rC5rT8H1U9YSa9N6mv1uifxq6QD5oIOKNivf1zisGAdid:sam:root:FHmIiyg6upvEkgr2t7sApjZkytHpB40m": { "can_access": true, "uri": "./ipfs/files/5615004220326759760.json" }
+    "did:sam:app:kxy278rC5rT8H1U9YSa9N6mv1uifxq6QD5oIOKNivf1zisGAdid:sam:root:FHmIiyg6upvEkgr2t7sApjZkytHpB40m": {
+        "can_access": true,
+        "uri": "./ipfs/files/5615004220326759760.json"
+    },
+    "7201277892035705458": {
+        "can_access": true,
+        "uri": "./ipfs/files/7201277892035705458.json"
+    },
+    "16532727062882624903": {
+        "can_access": false,
+        "uri": "./ipfs/files/16532727062882624903.json"
+    }
 }

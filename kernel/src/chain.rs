@@ -107,7 +107,7 @@ impl ChainClient {
 
         let data = json!({
             "uri": file_addr,
-            "can_access": true      
+            "can_access": true
         });
 
         table.entry(hash_key).or_insert(data);
@@ -118,6 +118,35 @@ impl ChainClient {
             .write(&serde_json::to_string(&table).unwrap().as_bytes())
             .ok();
         writer.flush().ok();
+    }
+
+    // revoke app access to a samaritans data
+    async fn revoke_app_access(param: String) -> Result<Parcel, subxt::Error> {
+        let params: Vec<&str> = param.split("#").collect();
+        let sam_did = params[1].to_owned();
+        let app_did = params[0].to_owned();
+
+        // produce hashkey first
+        let h_key = app_did.clone() + sam_did.as_str();
+        let hash_key = format!("{}", utility::compute_hash(&h_key.as_bytes()[..]));
+
+        // get record from chain
+        let path = "./chain/DataRecord.json";
+        let mut table = utility::read_json_from_file_raw(path.clone());
+
+        let mut entry = table.get(&hash_key).unwrap().clone();
+        entry["can_access"] = serde_json::Value::Bool(false);
+
+        table.insert(hash_key, entry);
+
+        // save
+        let mut writer = utility::write_file(path).unwrap();
+        writer
+            .write(&serde_json::to_string(&table).unwrap().as_bytes())
+            .ok();
+        writer.flush().ok();
+
+        Ok(Parcel::String(app_did))
     }
 }
 
@@ -151,7 +180,15 @@ impl Handler<Note> for ChainClient {
                     _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
                 }
             }),
-            _ => Ok(ReturnData(Parcel::Empty))
+            104 => future::block_on(async {
+                match msg.1 {
+                    Parcel::String(str) => Ok::<ReturnData, std::io::Error>(ReturnData(
+                        (ChainClient::revoke_app_access(str).await).unwrap_or(Parcel::Empty),
+                    )),
+                    _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                }
+            }),
+            _ => Ok(ReturnData(Parcel::Empty)),
         }
     }
 }

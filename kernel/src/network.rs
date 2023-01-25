@@ -234,7 +234,7 @@ impl Network {
         if !app_hashtable.contains_key(&sam_did) {
             // change the URL string to a JSON value
             let json_file_url = format!(
-                r#"["./ipfs/files/{}.json"]"#,
+                r#""./ipfs/files/{}.json""#,
                 utility::compute_hash(&hash_key.as_bytes()[..])
             );
             let json_str = serde_json::from_str(json_file_url.as_str()).unwrap();
@@ -247,6 +247,9 @@ impl Network {
                 .write(&serde_json::to_string(&app_hashtable).unwrap().as_bytes())
                 .ok();
             writer.flush().ok();
+
+            // create new empty file
+            fs::write(file_url.clone(), b"{}").expect("Failed to create file");
         }
 
         // read file and write to it
@@ -311,7 +314,7 @@ impl Network {
         let mut app_ht_uri = String::with_capacity(64);
         let app_hashtable: HashMap<String, Value>;
 
-        // prepare hashkey 
+        // prepare hashkey
         let h_key = app_did.clone() + sam_did.as_str();
         let hash_key = format!("{}", compute_hash(&h_key.as_bytes()[..]));
 
@@ -355,7 +358,9 @@ impl Network {
                         None
                     }
                 } else {
-                    None
+                    Some(json!({
+                        "status": "revoked"
+                    }))
                 }
             } else {
                 None
@@ -393,6 +398,124 @@ impl Network {
         if app_hashtable.contains_key(&key) {
             // get the value
             let val = app_hashtable.get(&key).unwrap().clone();
+            Some(val)
+        } else {
+            None
+        }
+    }
+
+    async fn delete_record(&mut self, param: String) -> Option<Value> {
+        let params: Vec<&str> = param.split("#").collect();
+        if params[0] == "" {
+            self.del_app_record(params[1].into(), params[2].into())
+        } else {
+            self.del_did_record(params[0].into(), params[1].into(), params[2].into())
+        }
+    }
+
+    fn del_did_record(&mut self, sam_did: String, key: String, app_did: String) -> Option<Value> {
+        // frist open the root file of the app
+        let mut app_ht_uri = String::with_capacity(64);
+        let app_hashtable: HashMap<String, Value>;
+
+        // prepare hashkey
+        let h_key = app_did.clone() + sam_did.as_str();
+        let hash_key = format!("{}", compute_hash(&h_key.as_bytes()[..]));
+
+        for c in &self.app_uri_cache {
+            if c.data.contains_key(&app_did) {
+                app_ht_uri = c.data.get(&app_did).unwrap().clone();
+                break;
+            }
+        }
+
+        // if not found in cache
+        if app_ht_uri.is_empty() {
+            // get manually
+            app_ht_uri = utility::get_app_htable_uri(&app_did);
+
+            // insert into cache
+            self.set_cache_url(app_did.clone(), app_ht_uri.clone());
+        }
+
+        // one more level of indirection
+        // read only the address of the file
+        app_hashtable = utility::read_json_from_file_raw(app_ht_uri.clone());
+
+        // check for existence
+        if app_hashtable.contains_key(&sam_did) {
+            // check chain if access is allowed
+            let chain_data = utility::read_json_from_file_raw("./chain/DataRecord.json");
+            if chain_data.contains_key(&hash_key) {
+                let record = chain_data.get(&hash_key).unwrap().clone();
+                let can_access = record["can_access"].as_bool().unwrap();
+                if can_access {
+                    // get storage file of did
+                    let storage_addr = record["uri"].as_str().unwrap();
+
+                    // read file
+                    let mut kv_store = utility::read_json_from_file_raw(storage_addr.clone());
+                    if kv_store.contains_key(&key) {
+                        let val = kv_store.remove(&key).unwrap();
+
+                        // save file
+                        let mut writer = utility::write_file(storage_addr).unwrap();
+                        writer
+                            .write(&serde_json::to_string(&kv_store).unwrap().as_bytes())
+                            .ok();
+                        writer.flush().ok();
+
+                        Some(val)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn del_app_record(&mut self, key: String, app_did: String) -> Option<Value> {
+        // frist open the root file of the app
+        let mut app_ht_uri = String::with_capacity(64);
+        let mut app_hashtable: HashMap<String, Value>;
+
+        for c in &self.app_uri_cache {
+            if c.data.contains_key(&app_did) {
+                app_ht_uri = c.data.get(&app_did).unwrap().clone();
+                break;
+            }
+        }
+
+        // if not found in cache
+        if app_ht_uri.is_empty() {
+            // get manually
+            app_ht_uri = utility::get_app_htable_uri(&app_did);
+
+            // insert into cache
+            self.set_cache_url(app_did.clone(), app_ht_uri.clone());
+        }
+
+        // read table
+        app_hashtable = utility::read_json_from_file_raw(app_ht_uri.clone());
+
+        // check for existence
+        if app_hashtable.contains_key(&key) {
+            // get the value when its deleted
+            let val = app_hashtable.remove(&key).unwrap();
+
+            // save back to file
+            let mut writer = utility::write_file(app_ht_uri).unwrap();
+            writer
+                .write(&serde_json::to_string(&app_hashtable).unwrap().as_bytes())
+                .ok();
+            writer.flush().ok();
+
             Some(val)
         } else {
             None
@@ -438,22 +561,33 @@ impl Handler<Note> for Network {
 
                 return Ok(ReturnData(Parcel::String("blessed assurance!".to_owned())));
             }
-            
             104 => {
                 // retreive from database
                 let data = future::block_on(async {
                     match msg.1 {
-                        Parcel::String(params) => {
-                            match self.get_record(params).await {
-                                Some(val) => {
-                                    Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::String(serde_json::to_string(&val).unwrap())))
-                                },
-                                None => {
-                                    Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty))
-                                }
-                            }
-                        }
-                        _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty))
+                        Parcel::String(params) => match self.get_record(params).await {
+                            Some(val) => Ok::<ReturnData, std::io::Error>(ReturnData(
+                                Parcel::String(serde_json::to_string(&val).unwrap()),
+                            )),
+                            None => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                        },
+                        _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                    }
+                });
+
+                return data;
+            }
+            105 => {
+                // retreive from database
+                let data = future::block_on(async {
+                    match msg.1 {
+                        Parcel::String(params) => match self.delete_record(params).await {
+                            Some(val) => Ok::<ReturnData, std::io::Error>(ReturnData(
+                                Parcel::String(serde_json::to_string(&val).unwrap()),
+                            )),
+                            None => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                        },
+                        _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
                     }
                 });
 

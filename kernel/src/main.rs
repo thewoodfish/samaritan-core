@@ -23,7 +23,7 @@ async fn chat_route(
         kernel::Kernel {
             hb: Instant::now(),
             ccl_addr: ccl.get_ref().clone(),
-            net_addr: net.get_ref().clone()
+            net_addr: net.get_ref().clone(),
         },
         &req,
         stream,

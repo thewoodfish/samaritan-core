@@ -9,7 +9,10 @@ use futures_lite::future;
 use serde_json::{json, Value};
 use std::str;
 
-use crate::{chain, network};
+use crate::{
+    chain,
+    network,
+};
 
 /// How often heartbeat pings are sent
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(5);
@@ -197,7 +200,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                             }
                         }
 
-                        "~4" => {
+                        "~4" => {   // insert into database
                             match self
                                 .net_addr
                                 .send(Note(103, Parcel::String(v[1].to_owned())))
@@ -223,7 +226,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
 
                         "~5" => {
                             error = json!({
-                                "exists": false
+                                "status": "Not found"
                             })
                             .to_string();
 
@@ -232,13 +235,70 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                                 .send(Note(104, Parcel::String(v[1].to_owned())))
                                 .await;
 
-                            println!("{:?}", ret);
+                            if let Ok(data_result) = ret {
+                                if let Ok(data) = data_result {
+                                    let parcel = data.0;
+                                    if let Parcel::String(val_str) = parcel {
+                                        let res: Value = serde_json::from_str(&val_str).unwrap();
+                                        ctx.text(res.to_string())
+                                    } else {
+                                        ctx.text(error)
+                                    }
+                                } else {
+                                    ctx.text(error)
+                                }
+                            } else {
+                                ctx.text(error)
+                            }
+                        }
+
+                        "~6" => {
+                            error = json!({
+                                "success": false
+                            })
+                            .to_string();
+
+                            let ret = self
+                                .net_addr
+                                .send(Note(105, Parcel::String(v[1].to_owned())))
+                                .await;
 
                             if let Ok(data_result) = ret {
                                 if let Ok(data) = data_result {
                                     let parcel = data.0;
                                     if let Parcel::String(val_str) = parcel {
                                         let res: Value = serde_json::from_str(&val_str).unwrap();
+                                        ctx.text(res.to_string())
+                                    } else {
+                                        ctx.text(error)
+                                    }
+                                } else {
+                                    ctx.text(error)
+                                }
+                            } else {
+                                ctx.text(error)
+                            }
+                        }
+
+                        "~7" => {
+                            error = json!({
+                                "success": false
+                            })
+                            .to_string();
+
+                            let ret = self
+                                .ccl_addr
+                                .send(Note(104, Parcel::String(v[1].to_owned())))
+                                .await;
+
+                            if let Ok(data_result) = ret {
+                                if let Ok(data) = data_result {
+                                    let parcel = data.0;
+                                    if let Parcel::String(app_did) = parcel {
+                                        let res: Value = json!({
+                                            "success": true,
+                                            "did": app_did
+                                        });
                                         ctx.text(res.to_string())
                                     } else {
                                         ctx.text(error)
