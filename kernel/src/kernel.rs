@@ -141,7 +141,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                                                 "keys": keys,
                                                 "error": false
                                             });
-
+                                             
                                             ctx.text(res.to_string())
                                         }
                                         _ => ctx.text(error),
@@ -150,7 +150,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                                 },
                                 Err(_) => ctx.text(error),
                             };
-                        }
+                        },
 
                         "~2" => {
                             // new API key
