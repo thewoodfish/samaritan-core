@@ -254,9 +254,7 @@ impl Network {
 
         // read file and write to it
         let mut kv_store = utility::read_json_from_file_raw(file_url.clone());
-        kv_store
-            .entry(key)
-            .or_insert(serde_json::from_str(&val).unwrap());
+        kv_store.insert(key, serde_json::from_str(&val).unwrap());
 
         // save file
         let mut writer = utility::write_file(file_url.clone()).unwrap();
