@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     fs,
-    io::{BufReader, BufWriter, Result, Write},
+    io::{BufReader, BufWriter, Result, Write, Read},
 };
 use std::{
     fmt::Debug,
@@ -521,6 +521,16 @@ impl Network {
             None
         }
     }
+
+    async fn read_did_doc(did: String) -> Option<String> {
+        // get did document
+        let did_file_uri = utility::get_sam_ht_uri(&did);
+        let mut reader = utility::read_file(did_file_uri).unwrap();
+        let mut temp_str = String::new();
+        let _ = reader.read_to_string(&mut temp_str);
+
+        Some(serde_json::to_string(&temp_str).unwrap())
+    }
 }
 
 impl Actor for Network {
@@ -533,6 +543,23 @@ impl Handler<Note> for Network {
     /// handle incoming "Note" and dispatch to various appropriate methods
     fn handle(&mut self, msg: Note, _: &mut Context<Self>) -> Self::Result {
         match &msg.0 {
+            100 => {
+                // read the corresponding DID document
+                let data = future::block_on(async {
+                    match msg.1 {
+                        Parcel::String(param) => match Network::read_did_doc(param).await {
+                            Some(val) => Ok::<ReturnData, std::io::Error>(ReturnData(
+                                Parcel::String(val),
+                            )),
+                            None => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                        },
+                        _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                    }
+                });
+
+                return data;
+            }
+
             101 => {
                 future::block_on(async {
                     // update IPFS version

@@ -1,0 +1,56 @@
+{
+    "did_doc": {
+        "uri": "did:kilt:light:004rL2bjFQBEgi8uaXukGAdvL6ZDpssY2KwDE3Mzw4qpeNbsrC:z12kzoP7CHDbMDabSxTdbsB5vdV4rdbtr6BQdU5pxxVKUGrQSFeaj1BE4DoTSUyvMQjf9CDReXQLBCYmqJi9M5dCmTWWM4r4bR9x4ufusm3ZLz6b",
+        "authentication": [
+            {
+                "id": "#authentication",
+                "type": "sr25519",
+                "publicKey": {
+                    "0": 150,
+                    "1": 251,
+                    "2": 26,
+                    "3": 200,
+                    "4": 144,
+                    "5": 49,
+                    "6": 239,
+                    "7": 254,
+                    "8": 107,
+                    "9": 152,
+                    "10": 196,
+                    "11": 2,
+                    "12": 57,
+                    "13": 217,
+                    "14": 92,
+                    "15": 91,
+                    "16": 27,
+                    "17": 248,
+                    "18": 116,
+                    "19": 49,
+                    "20": 68,
+                    "21": 2,
+                    "22": 49,
+                    "23": 212,
+                    "24": 62,
+                    "25": 154,
+                    "26": 225,
+                    "27": 152,
+                    "28": 172,
+                    "29": 28,
+                    "30": 98,
+                    "31": 91
+                }
+            }
+        ],
+        "service": [
+            {
+                "id": "#claims-repo",
+                "type": [
+                    "KiltPublishedCredentialCollectionV1"
+                ],
+                "serviceEndpoint": []
+            }
+        ],
+        "name": "Woodfiash"
+    },
+    "hash_table": {}
+}

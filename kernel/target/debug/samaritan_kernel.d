@@ -1,1 +1,1 @@
-/Users/explorer/Public/kernel/kernel/target/debug/samaritan_kernel: /Users/explorer/Public/kernel/kernel/src/kernel.rs /Users/explorer/Public/kernel/kernel/src/main.rs
+/Users/explorer/sam/kernel/kernel/target/debug/samaritan_kernel: /Users/explorer/sam/kernel/kernel/src/chain.rs /Users/explorer/sam/kernel/kernel/src/kernel.rs /Users/explorer/sam/kernel/kernel/src/main.rs /Users/explorer/sam/kernel/kernel/src/network.rs /Users/explorer/sam/kernel/kernel/src/utility.rs

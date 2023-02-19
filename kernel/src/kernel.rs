@@ -113,7 +113,6 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
             }
             ws::Message::Text(text) => {
                 log::debug!("{}", text);
-
                 let m = text.trim();
 
                 // dispatch functions to respective actors based on numbers
@@ -126,6 +125,34 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
 
                 future::block_on(async {
                     match v[0] {
+                        "~0" => {
+                            error = json!({
+                                "status": "Not found"
+                            })
+                            .to_string();
+
+                            let ret = self
+                                .net_addr
+                                .send(Note(100, Parcel::String(v[1].to_owned())))
+                                .await;
+
+                            if let Ok(data_result) = ret {
+                                if let Ok(data) = data_result {
+                                    let parcel = data.0;
+                                    println!("{:?}", parcel);
+                                    if let Parcel::String(str) = parcel {
+                                        ctx.text(str)
+                                    } else {
+                                        ctx.text(error)
+                                    }
+                                } else {
+                                    ctx.text(error)
+                                }
+                            } else {
+                                ctx.text(error)
+                            }
+                        }
+                        
                         "~1" => {
                             // create new samaritan
                             match self

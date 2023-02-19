@@ -49,7 +49,7 @@ async fn main() -> std::io::Result<()> {
             .route("/", web::get().to(chat_route))
             .wrap(Logger::default())
     })
-    .workers(5)
+    .workers(2)
     .bind(("127.0.0.1", 1509))?
     .run()
     .await
