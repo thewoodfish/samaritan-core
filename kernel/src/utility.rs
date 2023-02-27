@@ -1,10 +1,11 @@
-use crate::kernel::*;
+use crate::network::Network;
+use crate::{chain, kernel::*, network};
 use fnv::FnvHasher;
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::fs::{rename, File};
 use std::hash::Hasher;
 use std::io::{BufReader, BufWriter, Read, Result, Write};
@@ -46,13 +47,15 @@ pub fn get_random_str(n: u32, scope: &str) -> String {
     // make sure it hasn't been previously assigned
     if scope == "app" {
         path = get_hash_table_addr("./chain/AppHashTableUri.json");
-    } else {
+    } else if scope == "user" {
         path = get_hash_table_addr("./chain/HashTableUri.json");
     }
 
-    let table = read_json_from_file(path);
-    if table.contains_key(&sfx) {
-        sfx = get_random_str(32, "user");
+    if scope == "app" || scope == "user" {
+        let table = read_json_from_file(path);
+        if table.contains_key(&sfx) {
+            sfx = get_random_str(32, "user");
+        }
     }
 
     sfx
@@ -117,6 +120,9 @@ pub fn get_did_and_keys_mimick(str: &str) -> Parcel {
 
     let seed = generate_random_words(12);
 
+    // create the terminal file and create a samaritans profile
+    setup_sams_profile(&did);
+
     // update async
     spawn(move || {
         update_hash_table_uri(&table, addr, "./chain/HashTableUri.json");
@@ -124,6 +130,26 @@ pub fn get_did_and_keys_mimick(str: &str) -> Parcel {
     update_keyring(did.clone(), seed.clone());
 
     Parcel::Tuple1(did, seed)
+}
+
+pub fn setup_sams_profile(sam_did: &String) {
+    // generate a random id for app
+    let token = get_random_str(32, "token");
+    let app_did = "did:sam:app:Ela3Bb2Mik34IDMwvdIHCLtP08kz6vmUKqPecNa8fDIgv74l".to_string();
+
+    // construct JSON structure
+    let profile = json!({ 
+        "did": sam_did.to_owned(),
+        "appAccessToken": token
+    });
+
+    // create new network instace and write profile
+    Network::insert_did_node(
+        sam_did.into(),
+        "$profile".to_owned(),
+        serde_json::to_string(&profile).unwrap(),
+        app_did,
+    );
 }
 
 pub fn update_hash_table_uri<P: AsRef<Path> + Clone>(
@@ -274,7 +300,7 @@ pub fn get_app_htable_uri(did: &String) -> String {
     // get the address of the hash table from the chain
     let apps_ht_uri = get_hash_table_addr("./chain/AppHashtableUri.json");
     let apps_root_table: StringHashMap = read_json_from_file(apps_ht_uri);
-
+ 
     // get file table uri
     apps_root_table.get(did).unwrap().into()
 }

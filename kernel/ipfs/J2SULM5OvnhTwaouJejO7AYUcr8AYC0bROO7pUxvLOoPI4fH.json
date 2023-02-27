@@ -1,0 +1,13 @@
+{
+    "did:sam:root:mkxM6ieRCWHNqD1yf7VWTMW1lpIgxhch": "./ipfs/files/1075932322258883306.json",
+    "authTable": {
+        "Jasonholt2002@gmail.com": {
+            "about": "I am a resilient human being. I am very kind",
+            "did": "did:sam:root:mkxM6ieRCWHNqD1yf7VWTMW1lpIgxhch",
+            "email": "Jasonholt2002@gmail.com",
+            "name": "Deji",
+            "password": "Woodfish"
+        },
+        "status": "found"
+    }
+}

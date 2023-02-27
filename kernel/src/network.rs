@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     fs,
-    io::{BufReader, BufWriter, Result, Write, Read},
+    io::{BufReader, BufWriter, Read, Result, Write},
 };
 use std::{
     fmt::Debug,
@@ -164,7 +164,7 @@ impl Network {
         }
     }
 
-    fn insert_record(&mut self, param: String) {
+    pub fn insert_record(&mut self, param: String) {
         let params: Vec<&str> = param.split("#").collect();
         if params[0] == "" {
             self.insert_new_node(
@@ -173,45 +173,46 @@ impl Network {
                 params[3].into(),
             );
         } else {
-            let (hash_key, file_addr) = self.insert_did_node(
+            // let (hash_key, file_addr) = self.insert_did_node(
+            Network::insert_did_node(
                 params[0].into(),
                 params[1].into(),
                 params[2].into(),
                 params[3].into(),
             );
-
-            // notify the chain
-            future::block_on(async {
-                chain::ChainClient::record_data_entry(hash_key, file_addr).await;
-            });
         }
     }
 
-    fn insert_did_node(
-        &mut self,
+    pub fn insert_did_node(
+        // &mut self,
         sam_did: String,
         key: String,
         val: String,
         app_did: String,
-    ) -> (String, String) {
+    ) {
         // check cache first
         let mut app_ht_uri = String::with_capacity(64);
         let mut app_hashtable: HashMap<String, Value>;
-        for c in &self.app_uri_cache {
-            if c.data.contains_key(&app_did) {
-                app_ht_uri = c.data.get(&app_did).unwrap().clone();
-                break;
-            }
-        }
 
-        // if not found in cache
-        if app_ht_uri.is_empty() {
-            // get manually
-            app_ht_uri = utility::get_app_htable_uri(&app_did);
+        // cache part
+        // for c in &self.app_uri_cache {
+        //     if c.data.contains_key(&app_did) {
+        //         app_ht_uri = c.data.get(&app_did).unwrap().clone();
+        //         break;
+        //     }
+        // }
 
-            // insert into cache
-            self.set_cache_url(app_did.clone(), app_ht_uri.clone());
-        }
+        // // if not found in cache
+        // if app_ht_uri.is_empty() {
+        //     // get manually
+        //     app_ht_uri = utility::get_app_htable_uri(&app_did);
+
+        //     // insert into cache
+        //     self.set_cache_url(app_did.clone(), app_ht_uri.clone());
+        // }
+
+        // get manually
+        app_ht_uri = utility::get_app_htable_uri(&app_did);
 
         // retrieve contents from the file location
         app_hashtable = utility::read_json_from_file_raw(app_ht_uri.clone());
@@ -263,7 +264,10 @@ impl Network {
             .ok();
         writer.flush().ok();
 
-        (hash_key, file_url)
+        // notify the chain
+        future::block_on(async {
+            chain::ChainClient::record_data_entry(hash_key, file_url).await;
+        });
     }
 
     fn insert_new_node(&mut self, key: String, val: Value, app_did: String) {
@@ -349,6 +353,7 @@ impl Network {
 
                     // read file
                     let kv_store = utility::read_json_from_file_raw(storage_addr.clone());
+
                     if kv_store.contains_key(&key) {
                         let val = kv_store.get(&key).unwrap().clone();
                         Some(val)
@@ -529,6 +534,38 @@ impl Network {
 
         Some(serde_json::to_string(&temp_str).unwrap())
     }
+
+    async fn auth_access_key(param: String) -> Option<Value> {
+        let params: Vec<&str> = param.split("#").collect();
+        let data_requested: Vec<&str> = params[2].split("~").collect();
+        let mut data_given: Vec<Value> = Vec::new();
+        let sam_did = params[0].to_owned();
+        let terminal_did = "did:sam:app:Ela3Bb2Mik34IDMwvdIHCLtP08kz6vmUKqPecNa8fDIgv74l".to_string();
+        
+        // retrieve the hashtable of the did
+        let hash_table = utility::get_sam_hashtable(&sam_did);
+        
+        // read uri of terminal profile data
+        let sam_terminal_uri = hash_table.get(&terminal_did).unwrap();
+
+        // read the data
+        let terminal_data = utility::read_json_from_file_raw(sam_terminal_uri);
+        
+        // get profile
+        let profile = terminal_data.get("$profile").unwrap().to_owned();
+        if profile["appAccessToken"] == params[1] {
+            // get all the 
+            for i in data_requested {
+                if profile[i] != Value::Null {
+                    data_given.push(profile[i].to_owned())
+                } else {
+                    data_given.push(Value::Null);
+                }
+            }
+        }
+
+        Some(json!(data_given))
+    }
 }
 
 impl Actor for Network {
@@ -546,9 +583,9 @@ impl Handler<Note> for Network {
                 let data = future::block_on(async {
                     match msg.1 {
                         Parcel::String(param) => match Network::read_did_doc(param).await {
-                            Some(val) => Ok::<ReturnData, std::io::Error>(ReturnData(
-                                Parcel::String(val),
-                            )),
+                            Some(val) => {
+                                Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::String(val)))
+                            }
                             None => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
                         },
                         _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
@@ -607,6 +644,22 @@ impl Handler<Note> for Network {
                 let data = future::block_on(async {
                     match msg.1 {
                         Parcel::String(params) => match self.delete_record(params).await {
+                            Some(val) => Ok::<ReturnData, std::io::Error>(ReturnData(
+                                Parcel::String(serde_json::to_string(&val).unwrap()),
+                            )),
+                            None => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                        },
+                        _ => Ok::<ReturnData, std::io::Error>(ReturnData(Parcel::Empty)),
+                    }
+                });
+
+                return data;
+            }
+            106 => {
+                // check if access keyis valid and return what the app needs for signup
+                let data = future::block_on(async {
+                    match msg.1 {
+                        Parcel::String(params) => match Network::auth_access_key(params).await {
                             Some(val) => Ok::<ReturnData, std::io::Error>(ReturnData(
                                 Parcel::String(serde_json::to_string(&val).unwrap()),
                             )),

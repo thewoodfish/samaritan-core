@@ -266,7 +266,8 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                                 if let Ok(data) = data_result {
                                     let parcel = data.0;
                                     if let Parcel::String(val_str) = parcel {
-                                        let res: Value = serde_json::from_str(&val_str).unwrap();
+                                        let mut res: Value = serde_json::from_str(&val_str).unwrap();
+                                        res["status"] = "found".into();
                                         ctx.text(res.to_string())
                                     } else {
                                         ctx.text(error)
@@ -325,6 +326,37 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Kernel {
                                         let res: Value = json!({
                                             "success": true,
                                             "did": app_did
+                                        });
+                                        ctx.text(res.to_string())
+                                    } else {
+                                        ctx.text(error)
+                                    }
+                                } else {
+                                    ctx.text(error)
+                                }
+                            } else {
+                                ctx.text(error)
+                            }
+                        }
+
+                        "~8" => {
+                            error = json!({
+                                "success": false
+                            })
+                            .to_string();
+
+                            let ret = self
+                                .net_addr
+                                .send(Note(106, Parcel::String(v[1].to_owned())))
+                                .await;
+
+                            if let Ok(data_result) = ret {
+                                if let Ok(data) = data_result {
+                                    let parcel = data.0;
+                                    if let Parcel::String(data_req) = parcel {
+                                        let res: Value = json!({
+                                            "success": true,
+                                            "data": data_req
                                         });
                                         ctx.text(res.to_string())
                                     } else {
