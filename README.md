@@ -1,3 +1,2 @@
 ## samaritanOS kernel
-
-The main controller for SamaritanOS
+Quick test DB for SamaritanOS
