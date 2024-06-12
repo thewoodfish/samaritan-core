@@ -1,0 +1,3 @@
+cargo:rerun-if-changed=build/main.rs
+cargo:rustc-env=TYPENUM_BUILD_CONSTS=/Users/explorer/Public/kernel/kernel/target/release/build/typenum-863c317531149fe4/out/consts.rs
+cargo:rustc-env=TYPENUM_BUILD_OP=/Users/explorer/Public/kernel/kernel/target/release/build/typenum-863c317531149fe4/out/op.rs
